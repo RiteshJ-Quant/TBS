@@ -1,0 +1,29 @@
+# Web Framework
+Flask==3.1.3
+flask-cors==6.0.5
+
+# Data Processing & Utilities
+pandas==2.2.3
+numpy==2.1.0
+python-dotenv==1.0.0
+PyOTP==2.10.0
+python-dateutil==2.8.2
+
+# Networking & API Authentication
+requests==2.32.3
+urllib3==1.26.14
+PyJWT==2.6.0
+
+# WebSockets & Real-time Data
+websocket-client==1.8.0
+websockets==8.1
+
+# Kotak Neo SDK Dependencies
+bidict==0.22.1
+certifi==2022.12.7
+idna==2.10
+pyjsparser==2.7.1
+six==1.16.0
+
+# Local SDK Package
+-e ./Kotak-neo-api-v2

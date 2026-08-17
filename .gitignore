@@ -1,0 +1,5 @@
+Kotak-neo-api-v2/
+__pycache__/
+master_scrips/
+venv/
+strategies.json

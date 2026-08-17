@@ -1,0 +1,1862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRADE BOTS - Kotak Neo Automated Trading Desk</title>
+    <!-- Google Fonts & Font Awesome Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-sidebar: #003642;
+            --bg-sidebar-active: #005668;
+            --bg-sidebar-sub: #004554;
+            --bg-header: #002b35;
+            --bg-main: #f0f7f9;
+            --bg-card: #ffffff;
+            --border-color: #d1e4e8;
+            
+            --text-primary: #0f172a;
+            --text-muted: #64748b;
+            --text-sidebar: #e2e8f0;
+            
+            --accent-cyan: #00a8cc;
+            --accent-cyan-hover: #0088a6;
+            --accent-red: #ef4444;
+            --accent-green: #10b981;
+            --accent-gold: #f59e0b;
+            
+            --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.05);
+            --radius: 8px;
+            --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            overflow-x: hidden;
+        }
+
+        /* Sidebar Styling */
+        aside.sidebar {
+            width: 250px;
+            background-color: var(--bg-sidebar);
+            color: var(--text-sidebar);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            min-height: 100vh;
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .user-welcome-card {
+            padding: 1.5rem 1.25rem 1rem 1.25rem;
+        }
+
+        .user-welcome-card .sub {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #94a3b8;
+            font-weight: 600;
+        }
+
+        .user-welcome-card .name {
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: #ffffff;
+            margin-top: 2px;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 0.5rem 0.75rem;
+        }
+
+        .nav-item {
+            padding: 10px 14px;
+            border-radius: var(--radius);
+            color: #cbd5e1;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: var(--transition);
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+        }
+
+        .nav-item.active {
+            background: var(--bg-sidebar-active);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .sub-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding-left: 1.25rem;
+            margin-top: 4px;
+        }
+
+        .sub-item {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            color: #94a3b8;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: var(--transition);
+        }
+
+        .sub-item:hover {
+            color: #ffffff;
+        }
+
+        .sub-item.active {
+            background: rgba(0, 168, 204, 0.25);
+            color: #ffffff;
+            font-weight: 600;
+            border-left: 3px solid var(--accent-cyan);
+        }
+
+        .nav-logout {
+            margin-top: auto;
+            padding: 1rem 0.75rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .nav-logout .nav-item {
+            color: #fca5a5;
+        }
+
+        .nav-logout .nav-item:hover {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+        }
+
+        /* App Wrapper */
+        .app-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        /* Top Header */
+        header.top-header {
+            background-color: var(--bg-header);
+            color: #ffffff;
+            height: 60px;
+            padding: 0 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .header-title {
+            font-size: 1.15rem;
+            font-weight: 800;
+            letter-spacing: 1px;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .ticker-pill {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .clock-badge {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .clock-badge span {
+            font-size: 0.65rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+
+        .trade-mode-toggle {
+            display: flex;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 30px;
+            padding: 3px;
+        }
+
+        .mode-btn {
+            border: none;
+            background: transparent;
+            color: #94a3b8;
+            padding: 4px 12px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .mode-btn.active.real {
+            background: var(--accent-red);
+            color: #ffffff;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+        }
+
+        .mode-btn.active.demo {
+            background: var(--accent-cyan);
+            color: #ffffff;
+        }
+
+        .cache-badge {
+            background: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Main Workspace Content */
+        main.main-content {
+            padding: 1.5rem 2rem;
+            flex: 1;
+        }
+
+        .view-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            margin-bottom: 1.25rem;
+        }
+
+        .btn-cyan {
+            background-color: var(--accent-cyan);
+            color: #ffffff;
+            border: none;
+            padding: 10px 18px;
+            border-radius: var(--radius);
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 12px rgba(0, 168, 204, 0.25);
+        }
+
+        .btn-cyan:hover {
+            background-color: var(--accent-cyan-hover);
+            transform: translateY(-1px);
+        }
+
+        /* Cards Layout */
+        .content-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            box-shadow: var(--shadow-card);
+            margin-bottom: 1.5rem;
+        }
+
+        .content-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .content-card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+        }
+
+        /* Table Styling matching screenshot */
+        .table-wrapper {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        table.trade-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.82rem;
+        }
+
+        table.trade-table th {
+            background-color: var(--accent-cyan);
+            color: #ffffff;
+            font-weight: 700;
+            padding: 10px 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            white-space: nowrap;
+        }
+
+        table.trade-table td {
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        table.trade-table tr:nth-child(even) td {
+            background-color: #f8fafc;
+        }
+
+        .badge-idle {
+            background: #f1f5f9;
+            color: #475569;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border: 1px solid #cbd5e1;
+        }
+
+        .badge-running {
+            background: rgba(16, 185, 129, 0.15);
+            color: #047857;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            border: 1px solid #a7f3d0;
+        }
+
+        .action-icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 0.95rem;
+            margin: 0 3px;
+            transition: var(--transition);
+        }
+
+        .action-icon-btn.play { color: var(--accent-green); }
+        .action-icon-btn.edit { color: var(--accent-cyan); }
+        .action-icon-btn.delete { color: var(--accent-red); }
+
+        .action-icon-btn:hover {
+            transform: scale(1.15);
+        }
+
+        /* Modal styling */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-card {
+            background: #ffffff;
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 650px;
+            padding: 1.5rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-card-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .form-group label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .form-control {
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            font-size: 0.85rem;
+            outline: none;
+        }
+
+        .form-control:focus {
+            border-color: var(--accent-cyan);
+        }
+
+        @media (max-width: 900px) {
+            aside.sidebar { width: 70px; }
+            .user-welcome-card, .sub-menu, .nav-item span { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+        <div class="user-welcome-card">
+            <div class="sub">WELCOME</div>
+            <div class="name">RITESH</div>
+        </div>
+
+        <nav class="nav-menu">
+            <div class="nav-item active">
+                <i class="fa-solid fa-microchip"></i>
+                <span>Strategies</span>
+            </div>
+            
+            <div class="sub-menu">
+                <div class="sub-item active" onclick="switchView('timeBasedView', this)">
+                    <i class="fa-regular fa-clock"></i> Time Based
+                </div>
+                <div class="sub-item" onclick="switchView('manualDeskView', this)">
+                    <i class="fa-solid fa-code"></i> Manual Desk (OMS)
+                </div>
+            </div>
+
+            <div class="nav-item" onclick="switchView('brokersView', this)" style="margin-top: 10px;">
+                <i class="fa-solid fa-key"></i>
+                <span>Brokers</span>
+            </div>
+
+            <div class="nav-item" onclick="switchView('profileView', this)">
+                <i class="fa-solid fa-gear"></i>
+                <span>Profile Settings</span>
+            </div>
+        </nav>
+
+        <div class="nav-logout">
+            <div class="nav-item" onclick="logoutBroker()">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span>Logout</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Right App Wrapper -->
+    <div class="app-wrapper">
+
+        <!-- Top Header -->
+        <header class="top-header">
+            <div class="header-left">
+                <i class="fa-solid fa-bars" style="cursor: pointer; font-size: 1.1rem;"></i>
+                <div class="header-title">TRADE BOTS</div>
+            </div>
+
+            <div class="header-right">
+                <div class="ticker-pill" id="niftyTicker">NIFTY: 24383.60</div>
+                <div class="ticker-pill" id="sensexTicker">SENSEX: 78094.64</div>
+
+                <div class="clock-badge">
+                    <div id="headerClock">10:08:33</div>
+                    <span id="headerDate">SUN, 16 AUG</span>
+                </div>
+
+                <div class="trade-mode-toggle">
+                    <button class="mode-btn" id="btnDemoMode" onclick="setTradeMode('DEMO')">DEMO TRADE</button>
+                    <button class="mode-btn active real" id="btnRealMode" onclick="setTradeMode('REAL')">REAL TRADE</button>
+                </div>
+
+                <div class="cache-badge" id="sessionBadge">
+                    <i class="fa-solid fa-square" style="font-size: 0.5rem; color: #10b981;"></i>
+                    <span id="sessionStatusText">CACHE READY (6/6)</span>
+                </div>
+
+                <i class="fa-regular fa-moon" style="cursor: pointer; font-size: 1rem; color: #cbd5e1;"></i>
+            </div>
+        </header>
+
+        <!-- Main Workspace Area -->
+        <main class="main-content">
+
+            <!-- ================= VIEW 1: TIME BASED STRATEGIES ================= -->
+            <div id="timeBasedView" class="view-panel" style="display: none;">
+                <div class="view-title">Time Based</div>
+
+                <button class="btn-cyan" onclick="openAddStrategyModal()" style="margin-bottom: 1.5rem;">
+                    <i class="fa-solid fa-plus"></i> ADD NEW STRATEGY
+                </button>
+
+                <!-- All Strategies Card -->
+                <div class="content-card">
+                    <div class="content-card-header">
+                        <div class="content-card-title">All Strategies</div>
+                    </div>
+
+                    <div class="table-wrapper">
+                        <table class="trade-table">
+                            <thead>
+                                <tr>
+                                    <th>SYMBOL</th>
+                                    <th>BROKER</th>
+                                    <th>LOTS/PAIRS</th>
+                                    <th>BATCHES</th>
+                                    <th>ENTRY TIME</th>
+                                    <th>ENTRY INTERVAL</th>
+                                    <th>EXIT TIME</th>
+                                    <th>EXIT INTERVAL</th>
+                                    <th>SL</th>
+                                    <th>STRIKE SELECTION</th>
+                                    <th>STATUS</th>
+                                    <th>ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="allStrategiesTbody">
+                                <tr>
+                                    <td colspan="12" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                                        Loading strategies...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Active Strategies Card -->
+                <div class="content-card">
+                    <div class="content-card-header">
+                        <div class="content-card-title">Active Strategies</div>
+                        <button class="btn-cyan" onclick="fetchStrategies()" style="padding: 6px 12px; font-size: 0.75rem;">
+                            REFRESH
+                        </button>
+                    </div>
+
+                    <div class="table-wrapper">
+                        <table class="trade-table">
+                            <thead>
+                                <tr>
+                                    <th>SYMBOL</th>
+                                    <th>BROKER</th>
+                                    <th>LOTS/PAIRS</th>
+                                    <th>BATCHES</th>
+                                    <th>ENTRY TIME</th>
+                                    <th>ENTRY INTERVAL</th>
+                                    <th>EXIT TIME</th>
+                                    <th>EXIT INTERVAL</th>
+                                    <th>SL</th>
+                                    <th>STRIKE SELECTION</th>
+                                    <th>STATUS</th>
+                                    <th>PNL</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activeStrategiesTbody">
+                                <tr>
+                                    <td colspan="12" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                                        No active strategies.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- LIVE EXECUTION TRACKER CARD (BELOW ACTIVE STRATEGIES) -->
+                <div id="strategyTrackerContainer" class="content-card" style="background: #ffffff; color: #0f172a; border-radius: 10px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-top: 1.5rem; margin-bottom: 1.5rem; border: 1px solid #e2e8f0; display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 1rem 1.25rem; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 1.5rem;">
+                        <div>
+                            <div id="trackerStratName" style="font-size: 1.1rem; font-weight: 800; color: #0284c7; letter-spacing: 0.5px;">920 TBS</div>
+                            <div id="trackerStratSubtitle" style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">Tracking closest premium contracts...</div>
+                        </div>
+                        <button type="button" onclick="stopCurrentStrategyTracker()" style="background: #ef4444; color: #ffffff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-square" style="font-size: 0.7rem;"></i> Stop Strategy
+                        </button>
+                    </div>
+
+                    <div style="font-size: 0.8rem; font-weight: 800; color: #475569; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 1rem;">
+                        SELECTED OPTION CONTRACTS
+                    </div>
+
+                    <div class="table-wrapper">
+                        <table class="trade-table">
+                            <thead>
+                                <tr>
+                                    <th style="background: #0284c7; color: #ffffff;">CONTRACT SYMBOL</th>
+                                    <th style="background: #0284c7; color: #ffffff;">TYPE</th>
+                                    <th style="background: #0284c7; color: #ffffff;">STRIKE</th>
+                                    <th style="background: #0284c7; color: #ffffff;">LOTS</th>
+                                    <th style="background: #0284c7; color: #ffffff;">LTP (₹)</th>
+                                    <th style="background: #0284c7; color: #ffffff;">ENTRY (₹)</th>
+                                    <th style="background: #0284c7; color: #ffffff;">STOPLOSS (₹)</th>
+                                    <th style="background: #0284c7; color: #ffffff;">P&L (₹)</th>
+                                    <th style="background: #0284c7; color: #ffffff;">STATUS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trackerContractsTbody">
+                                <!-- Dynamically filled option contracts -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- DATA SOURCE & SYSTEM EXECUTION CONSOLE -->
+                <div id="executionConsoleContainer" class="content-card" style="background: #0f172a; color: #f8fafc; border-radius: 10px; padding: 1.25rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); margin-top: 1.5rem; border: 1px solid #1e293b;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #334155; padding-bottom: 0.75rem;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-terminal" style="color: #38bdf8; font-size: 0.9rem;"></i>
+                            <span style="font-size: 0.85rem; font-weight: 800; color: #38bdf8; letter-spacing: 0.5px; text-transform: uppercase;">
+                                DATA SOURCE & LIVE SYSTEM CONSOLE
+                            </span>
+                        </div>
+                        <button type="button" onclick="clearExecutionConsole()" style="background: transparent; color: #94a3b8; border: 1px solid #334155; padding: 3px 10px; border-radius: 4px; font-size: 0.72rem; cursor: pointer;">
+                            CLEAR CONSOLE
+                        </button>
+                    </div>
+
+                    <div id="consoleLogBox" style="font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 0.78rem; line-height: 1.6; max-height: 180px; overflow-y: auto; background: #020617; border-radius: 6px; padding: 12px; border: 1px solid #1e293b; color: #38bdf8;">
+                        <div style="color: #64748b;">[System Console Initialized] Listening for Live Kotak Neo API & WebSocket feed...</div>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- ================= VIEW 2: MANUAL DESK (OMS) ================= -->
+            <div id="manualDeskView" class="view-panel" style="display: none;">
+                <div class="view-title">Manual Desk (OMS)</div>
+
+                <div class="content-card">
+                    <div class="content-card-header">
+                        <div class="content-card-title">Multi-Leg Basket Order Management System</div>
+                        <button class="btn-cyan" onclick="executeSquareOffAll()" style="background-color: var(--accent-red);">
+                            <i class="fa-solid fa-ban"></i> SQUARE OFF ALL POSITIONS
+                        </button>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Symbol</label>
+                            <input type="text" id="oms_symbol" class="form-control" value="SBIN-EQ">
+                        </div>
+                        <div class="form-group">
+                            <label>Transaction Side</label>
+                            <select id="oms_side" class="form-control">
+                                <option value="B">BUY</option>
+                                <option value="S">SELL</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Quantity</label>
+                            <input type="number" id="oms_qty" class="form-control" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label>Order Type</label>
+                            <select id="oms_type" class="form-control">
+                                <option value="MKT">MKT (Market)</option>
+                                <option value="L">L (Limit)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1.25rem;">
+                        <button class="btn-cyan" onclick="handleOMSPlaceOrder()">
+                            <i class="fa-solid fa-bolt"></i> PLACE OMS ORDER
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- ================= VIEW 3: BROKERS ================= -->
+            <div id="brokersView" class="view-panel" style="display: none;">
+                <div class="view-title">Brokers Login Desk</div>
+
+                <div class="content-card">
+                    <div class="content-card-header">
+                        <div class="content-card-title">Kotak Neo API v2 Authentication</div>
+                    </div>
+
+                    <form id="brokerLoginForm" onsubmit="handleBrokerLogin(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Consumer Key</label>
+                                <input type="password" id="b_key" class="form-control" placeholder="API Consumer Key" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Registered Mobile Number</label>
+                                <input type="text" id="b_mobile" class="form-control" placeholder="+91XXXXXXXXXX" required>
+                            </div>
+                            <div class="form-group">
+                                <label>UCC (Client Code)</label>
+                                <input type="text" id="b_ucc" class="form-control" placeholder="Client Code" required>
+                            </div>
+                            <div class="form-group">
+                                <label>6-Digit MPIN</label>
+                                <input type="password" id="b_mpin" class="form-control" maxlength="6" required>
+                            </div>
+                            <div class="form-group">
+                                <label>6-Digit TOTP</label>
+                                <input type="text" id="b_totp" class="form-control" maxlength="6">
+                            </div>
+                            <div class="form-group">
+                                <label>TOTP Secret Key (Optional)</label>
+                                <input type="password" id="b_secret" class="form-control" placeholder="32-character secret">
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 1.25rem;">
+                            <button type="submit" class="btn-cyan">
+                                <i class="fa-solid fa-lock-open"></i> CONNECT TO KOTAK NEO
+                            </button>
+                        </div>
+                    </form>
+
+                    <div id="brokerAlert" style="margin-top: 1rem; font-weight: 600;"></div>
+                </div>
+            </div>
+
+
+            <!-- ================= VIEW 4: PROFILE SETTINGS ================= -->
+            <div id="profileView" class="view-panel" style="display: none;">
+                <div class="view-title">Profile Settings</div>
+
+                <div class="content-card">
+                    <div class="content-card-title">User Account Overview</div>
+                    <p style="margin-top: 10px; color: var(--text-muted);">
+                        Logged in User: <strong>Ritesh</strong><br>
+                        Active Broker: <strong>Kotak Neo API v2</strong><br>
+                        System Version: <strong>TRADE BOTS v2.4</strong>
+                    </p>
+                </div>
+            </div>
+
+            <!-- ================= VIEW 5: CONFIGURE STRATEGY TEMPLATE ================= -->
+            <div id="configureStrategyView" class="view-panel" style="display: none;">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1.5rem; flex-wrap: wrap;">
+                    <button type="button" class="btn-cyan" style="background: #ffffff; color: #0284c7; border: 1px solid #cbd5e1; padding: 8px 16px; font-weight: 600; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px;" onclick="switchView('timeBasedView')">
+                        <i class="fa-solid fa-arrow-left"></i> Back to Templates
+                    </button>
+                    <div style="color: #0284c7; font-size: 1.4rem; font-weight: 700; letter-spacing: -0.3px;">Configure Strategy Template</div>
+                </div>
+
+                <form id="configureStrategyForm" onsubmit="handleSaveNewStrategy(event)">
+                    <!-- GENERAL SETTINGS CARD -->
+                    <div class="content-card" style="background: #ffffff; color: #0f172a; border-radius: 10px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem; border: 1px solid #e2e8f0;">
+                        <div style="font-size: 0.95rem; font-weight: 800; color: #334155; letter-spacing: 0.5px; margin-bottom: 1.25rem; text-transform: uppercase;">
+                            GENERAL SETTINGS
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem 1.5rem;">
+                            <!-- ROW 1 -->
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">STRATEGY NAME</label>
+                                <input type="text" id="s_strategy_name" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="TBS Strategy" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">SCRIP INDEX</label>
+                                <select id="s_scrip_index" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" onchange="updateExpiryDates(this.value)" required>
+                                    <option value="" disabled>Select Index</option>
+                                    <option value="NIFTY" selected>NIFTY</option>
+                                    <option value="BANKNIFTY">BANKNIFTY</option>
+                                    <option value="FINNIFTY">FINNIFTY</option>
+                                    <option value="MIDCPNIFTY">MIDCPNIFTY</option>
+                                    <option value="SENSEX">SENSEX</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">STRATEGY EXPIRY</label>
+                                <select id="s_strategy_expiry" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                    <option value="" disabled>Select Expiry</option>
+                                    <option value="Current Expiry (20-AUG-2026)" selected>Current Expiry (20-AUG-2026)</option>
+                                    <option value="Next Expiry (27-AUG-2026)">Next Expiry (27-AUG-2026)</option>
+                                    <option value="Monthly Expiry (27-AUG-2026)">Monthly Expiry (27-AUG-2026)</option>
+                                    <option value="Far Expiry (03-SEP-2026)">Far Expiry (03-SEP-2026)</option>
+                                </select>
+                            </div>
+
+                            <!-- ROW 2 -->
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">ENTRY TIME (24H HH:MM)</label>
+                                <input type="text" id="s_entry_time" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="09:20" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">EXIT TIME (24H HH:MM)</label>
+                                <input type="text" id="s_exit_time" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="15:15" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">PRODUCT CODE</label>
+                                <select id="s_product_code" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                    <option value="NRML (Normal Carrying)" selected>NRML (Normal Carrying)</option>
+                                    <option value="MIS (Intraday)">MIS (Intraday)</option>
+                                    <option value="CNC (Delivery)">CNC (Delivery)</option>
+                                </select>
+                            </div>
+
+                            <!-- ROW 3 -->
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">UNDERLYING SOURCE</label>
+                                <select id="s_underlying_source" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                    <option value="Cash (Spot Index LTP)" selected>Cash (Spot Index LTP)</option>
+                                    <option value="Futures LTP">Futures LTP</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">SQUARE OFF TYPE</label>
+                                <select id="s_square_off_type" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                    <option value="Partial (Square off hit leg only)" selected>Partial (Square off hit leg only)</option>
+                                    <option value="Complete (Square off all legs)">Complete (Square off all legs)</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">TRAIL SL TO BREAK-EVEN PRICE</label>
+                                <select id="s_trail_sl" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                    <option value="None" selected>None</option>
+                                    <option value="Move all legs to entry cost">Move all legs to entry cost</option>
+                                    <option value="Move SL enabled leg only">Move SL enabled leg only</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- EXECUTION & OVERALL STRATEGY SETTINGS CARD -->
+                    <div class="content-card" style="background: #ffffff; color: #0f172a; border-radius: 10px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem; border: 1px solid #e2e8f0;">
+                        <div style="font-size: 0.95rem; font-weight: 800; color: #334155; letter-spacing: 0.5px; margin-bottom: 1.25rem; text-transform: uppercase;">
+                            EXECUTION & OVERALL STRATEGY SETTINGS
+                        </div>
+
+                        <!-- ROW 1 -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">TARGET/SL REFERENCE PRICE</label>
+                                <select id="s_target_sl_ref" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                    <option value="Traded Price" selected>Traded Price</option>
+                                    <option value="Avg Price">Avg Price</option>
+                                    <option value="LTP">LTP</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">DELAY ENTRY (SECONDS, 0-50)</label>
+                                <input type="number" id="s_delay_entry" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="0" min="0" max="50">
+                            </div>
+                        </div>
+
+                        <!-- ROW 2 -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem 1.5rem; margin-bottom: 1.5rem;">
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">OVERALL TARGET PROFIT (RS.)</label>
+                                <input type="number" id="s_overall_target" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="0" min="0">
+                            </div>
+
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">OVERALL STOP LOSS (RS.)</label>
+                                <input type="number" id="s_overall_sl" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="0" min="0">
+                            </div>
+
+                            <div class="form-group">
+                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">OVERALL RE-ENTRY ON SL</label>
+                                <select id="s_overall_reentry" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                    <option value="None" selected>None</option>
+                                    <option value="Re-entry ASAP">Re-entry ASAP</option>
+                                    <option value="Re-entry on Signal">Re-entry on Signal</option>
+                                    <option value="Re-entry @ Cost">Re-entry @ Cost</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- ROW 3: CHECKBOX -->
+                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 0.5rem;">
+                            <input type="checkbox" id="s_enable_trailing_sl" style="width: 16px; height: 16px; accent-color: #0284c7; cursor: pointer;">
+                            <label for="s_enable_trailing_sl" style="color: #334155; font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer;">
+                                ENABLE OVERALL TRAILING SL
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- STRATEGY LEGS CONTAINER -->
+                    <div style="margin-bottom: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <div style="font-size: 0.95rem; font-weight: 800; color: #334155; letter-spacing: 0.5px; text-transform: uppercase;">
+                                STRATEGY LEGS
+                            </div>
+                            <button type="button" class="btn-cyan" style="background: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; padding: 6px 14px; font-weight: 600; border-radius: 6px; font-size: 0.85rem; cursor: pointer;" onclick="addNewLeg()">
+                                <i class="fa-solid fa-plus"></i> Add Leg
+                            </button>
+                        </div>
+
+                        <div id="legsContainer">
+                            <!-- Dynamic Leg Cards rendered here -->
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 1rem;">
+                        <button type="button" class="btn-cyan" style="background: #94a3b8; color: #fff; padding: 10px 20px; font-weight: 600; border-radius: 6px;" onclick="switchView('timeBasedView')">CANCEL</button>
+                        <button type="submit" class="btn-cyan" style="padding: 10px 24px; font-weight: 700; border-radius: 6px;">SAVE STRATEGY TEMPLATE</button>
+                    </div>
+                </form>
+            </div>
+
+        </main>
+    </div>
+
+
+    <!-- Add New Strategy Modal -->
+    <div class="modal-overlay" id="addStrategyModal">
+        <div class="modal-card">
+            <div class="modal-card-header">
+                <div class="modal-card-title">ADD NEW TIME BASED STRATEGY</div>
+                <i class="fa-solid fa-xmark" onclick="closeAddStrategyModal()" style="cursor: pointer; font-size: 1.2rem;"></i>
+            </div>
+
+            <form id="newStratForm" onsubmit="handleSaveNewStrategy(event)">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Symbol</label>
+                        <select id="s_symbol" class="form-control">
+                            <option value="NIFTY" selected>NIFTY</option>
+                            <option value="BANKNIFTY">BANKNIFTY</option>
+                            <option value="FINNIFTY">FINNIFTY</option>
+                            <option value="SENSEX">SENSEX</option>
+                            <option value="SBIN-EQ">SBIN-EQ</option>
+                            <option value="RELIANCE-EQ">RELIANCE-EQ</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Broker</label>
+                        <select id="s_broker" class="form-control">
+                            <option value="Kotak Neo" selected>Kotak Neo</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Lots / Pairs</label>
+                        <input type="number" id="s_lots" class="form-control" value="1" min="1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Batches</label>
+                        <input type="number" id="s_batches" class="form-control" value="1" min="1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Entry Time (HH:MM)</label>
+                        <input type="time" id="s_entry_time" class="form-control" value="09:20" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Entry Interval (Sec)</label>
+                        <input type="number" id="s_entry_interval" class="form-control" value="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Exit Time (HH:MM)</label>
+                        <input type="time" id="s_exit_time" class="form-control" value="15:20" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Exit Interval (Sec)</label>
+                        <input type="number" id="s_exit_interval" class="form-control" value="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Stop Loss (SL)</label>
+                        <input type="text" id="s_sl" class="form-control" value="2 Pts" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Strike Selection</label>
+                        <select id="s_strike" class="form-control">
+                            <option value="Premium closest to 3" selected>Premium closest to 3</option>
+                            <option value="ATM">ATM (At The Money)</option>
+                            <option value="OTM1">OTM 1</option>
+                            <option value="OTM2">OTM 2</option>
+                            <option value="ITM1">ITM 1</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="margin-top: 1.5rem; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" class="btn-cyan" style="background: #94a3b8;" onclick="closeAddStrategyModal()">CANCEL</button>
+                    <button type="submit" class="btn-cyan">SAVE STRATEGY</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <script>
+        let currentTradeMode = 'REAL';
+        let isBrokerLoggedIn = false;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            updateClock();
+            setInterval(updateClock, 1000);
+            fetchMarketQuotes();
+            setInterval(fetchMarketQuotes, 10000);
+            updateExpiryDates('NIFTY');
+
+            const loggedIn = await checkSessionStatus();
+            if (loggedIn) {
+                switchView('timeBasedView', document.querySelector('.sub-item'));
+                fetchStrategies();
+            } else {
+                switchView('brokersView', document.querySelector('[onclick*="brokersView"]'));
+            }
+        });
+
+        async function fetchMarketQuotes() {
+            try {
+                const res = await fetch('/api/market_quotes');
+                const data = await res.json();
+                if (data.success && data.quotes) {
+                    if (data.quotes.NIFTY) {
+                        const n = data.quotes.NIFTY;
+                        document.getElementById('niftyTicker').innerText = `NIFTY: ${typeof n.ltp === 'number' ? n.ltp.toFixed(2) : n.ltp}`;
+                    }
+                    if (data.quotes.SENSEX) {
+                        const s = data.quotes.SENSEX;
+                        document.getElementById('sensexTicker').innerText = `SENSEX: ${typeof s.ltp === 'number' ? s.ltp.toFixed(2) : s.ltp}`;
+                    }
+                    addConsoleLog(`HTTP REST Quote: NIFTY = ${data.quotes.NIFTY?.ltp}, SENSEX = ${data.quotes.SENSEX?.ltp} (Source: Kotak Neo API v2)`, 'REST API');
+                }
+            } catch (e) { console.error('Market quotes fetch error:', e); }
+        }
+
+        function addConsoleLog(msg, type = 'INFO') {
+            const box = document.getElementById('consoleLogBox');
+            if (!box) return;
+            const now = new Date();
+            const timeStr = now.toTimeString().split(' ')[0];
+            const color = type === 'ERROR' ? '#f87171' : (type === 'SUCCESS' ? '#4ade80' : '#38bdf8');
+            const logLine = document.createElement('div');
+            logLine.style.color = color;
+            logLine.innerHTML = `<span style="color: #64748b;">[${timeStr}]</span> <strong style="color: #a855f7;">[${type}]</strong> ${msg}`;
+            box.appendChild(logLine);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function clearExecutionConsole() {
+            const box = document.getElementById('consoleLogBox');
+            if (box) box.innerHTML = '<div style="color: #64748b;">Console cleared. Listening for live data events...</div>';
+        }
+
+        async function updateExpiryDates(symbol = 'NIFTY') {
+            const select = document.getElementById('s_strategy_expiry');
+            if (!select) return;
+
+            try {
+                const res = await fetch(`/api/expiries?symbol=${encodeURIComponent(symbol)}`);
+                const data = await res.json();
+                if (data.success && data.expiries && data.expiries.length > 0) {
+                    select.innerHTML = data.expiries.map((exp, idx) => `
+                        <option value="${exp.value}" ${idx === 0 ? 'selected' : ''}>${exp.label}</option>
+                    `).join('');
+                    return;
+                }
+            } catch (e) { console.warn('Master scrip expiries fetch notice:', e); }
+
+            const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+            const now = new Date();
+            
+            let targetDay = 4;
+            const sym = (symbol || 'NIFTY').toUpperCase();
+            if (sym.includes('FINNIFTY')) targetDay = 2;
+            else if (sym.includes('MIDCP')) targetDay = 1;
+            else if (sym.includes('SENSEX')) targetDay = 5;
+
+            let d1 = new Date(now);
+            let diff1 = (targetDay - d1.getDay() + 7) % 7;
+            if (diff1 === 0 && (d1.getHours() > 15 || (d1.getHours() === 15 && d1.getMinutes() >= 30))) {
+                diff1 = 7;
+            }
+            d1.setDate(d1.getDate() + diff1);
+
+            let d2 = new Date(d1); d2.setDate(d2.getDate() + 7);
+            let d3 = new Date(d1); d3.setDate(d3.getDate() + 14);
+
+            const fmt = (d) => `${String(d.getDate()).padStart(2, '0')}-${months[d.getMonth()]}-${d.getFullYear()}`;
+            const date1Str = fmt(d1), date2Str = fmt(d2), date3Str = fmt(d3);
+
+            select.innerHTML = `
+                <option value="Current Expiry (${date1Str})" selected>Current Expiry (${date1Str})</option>
+                <option value="Next Expiry (${date2Str})">Next Expiry (${date2Str})</option>
+                <option value="Monthly Expiry (${date2Str})">Monthly Expiry (${date2Str})</option>
+                <option value="Far Expiry (${date3Str})">Far Expiry (${date3Str})</option>
+            `;
+        }
+
+        function updateClock() {
+            const now = new Date();
+            const timeStr = now.toTimeString().split(' ')[0];
+            const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+            const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+            const dateStr = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]}`;
+
+            document.getElementById('headerClock').innerText = timeStr;
+            document.getElementById('headerDate').innerText = dateStr;
+        }
+
+        function setTradeMode(mode) {
+            currentTradeMode = mode;
+            document.getElementById('btnDemoMode').className = `mode-btn ${mode === 'DEMO' ? 'active demo' : ''}`;
+            document.getElementById('btnRealMode').className = `mode-btn ${mode === 'REAL' ? 'active real' : ''}`;
+        }
+
+        function switchView(viewId, el) {
+            if (!isBrokerLoggedIn && viewId !== 'brokersView') {
+                const alertDiv = document.getElementById('brokerAlert');
+                if (alertDiv) {
+                    alertDiv.innerHTML = '<span style="color: #ef4444;">Please connect to Kotak Neo Broker API first to enter the application.</span>';
+                }
+                viewId = 'brokersView';
+                el = document.querySelector('[onclick*="brokersView"]');
+            }
+
+            document.querySelectorAll('.view-panel').forEach(v => v.style.display = 'none');
+            document.querySelectorAll('.sub-item, .nav-item').forEach(n => n.classList.remove('active'));
+
+            const target = document.getElementById(viewId);
+            if (target) target.style.display = 'block';
+            if (el) el.classList.add('active');
+            if (viewId === 'timeBasedView') fetchStrategies();
+        }
+
+        async function checkSessionStatus() {
+            try {
+                const res = await fetch('/api/session');
+                const data = await res.json();
+                const text = document.getElementById('sessionStatusText');
+                if (data.logged_in) {
+                    isBrokerLoggedIn = true;
+                    text.innerText = `CONNECTED: ${data.ucc}`;
+                    return true;
+                } else {
+                    isBrokerLoggedIn = false;
+                    text.innerText = 'NOT CONNECTED';
+                    return false;
+                }
+            } catch (e) {
+                console.error(e);
+                isBrokerLoggedIn = false;
+                return false;
+            }
+        }
+
+        let cachedStrategies = [];
+        let currentEditingStrategyId = null;
+
+        async function fetchStrategies() {
+            try {
+                const res = await fetch('/api/strategies');
+                const data = await res.json();
+                if (!data.success) return;
+
+                cachedStrategies = data.all_strategies || [];
+                fetchStrategyTracker();
+
+                const allTbody = document.getElementById('allStrategiesTbody');
+                const activeTbody = document.getElementById('activeStrategiesTbody');
+
+                if (data.all_strategies.length === 0) {
+                    allTbody.innerHTML = `<tr><td colspan="12" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No strategies created yet.</td></tr>`;
+                } else {
+                    allTbody.innerHTML = data.all_strategies.map(s => {
+                        const statusBadge = s.status === 'RUNNING' || s.status === 'ACTIVE' 
+                            ? `<span class="badge-running">RUNNING</span>` 
+                            : `<span class="badge-idle">${s.status}</span>`;
+
+                        return `
+                            <tr>
+                                <td style="font-weight: 700;">${s.symbol}</td>
+                                <td>${s.broker}</td>
+                                <td>${s.lots}</td>
+                                <td>${s.batches}</td>
+                                <td style="font-family: 'JetBrains Mono'; font-weight: 600;">${s.entry_time}</td>
+                                <td>${s.entry_interval}</td>
+                                <td style="font-family: 'JetBrains Mono'; font-weight: 600;">${s.exit_time}</td>
+                                <td>${s.exit_interval}</td>
+                                <td>${s.sl}</td>
+                                <td>${s.strike_selection}</td>
+                                <td>${statusBadge}</td>
+                                <td>
+                                    <button class="action-icon-btn play" onclick="toggleStrategy('${s.id}')" title="Start/Pause">
+                                        <i class="fa-solid ${s.status === 'RUNNING' ? 'fa-circle-pause' : 'fa-play'}"></i>
+                                    </button>
+                                    <button class="action-icon-btn edit" onclick="editStrategy('${s.id}')" title="Edit">
+                                        <i class="fa-solid fa-pen-to-square"></i>
+                                    </button>
+                                    <button class="action-icon-btn delete" onclick="deleteStrategy('${s.id}')" title="Delete">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+
+                if (data.active_strategies.length === 0) {
+                    activeTbody.innerHTML = `<tr><td colspan="12" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No active strategies.</td></tr>`;
+                } else {
+                    activeTbody.innerHTML = data.active_strategies.map(s => `
+                        <tr>
+                            <td style="font-weight: 700;">${s.symbol}</td>
+                            <td>${s.broker}</td>
+                            <td>${s.lots}</td>
+                            <td>${s.batches}</td>
+                            <td style="font-family: 'JetBrains Mono';">${s.entry_time}</td>
+                            <td>${s.entry_interval}</td>
+                            <td style="font-family: 'JetBrains Mono';">${s.exit_time}</td>
+                            <td>${s.exit_interval}</td>
+                            <td>${s.sl}</td>
+                            <td>${s.strike_selection}</td>
+                            <td><span class="badge-running">RUNNING</span></td>
+                            <td style="font-weight: 700; color: var(--accent-green);">${s.pnl || '₹0.00'}</td>
+                        </tr>
+                    `).join('');
+                }
+
+            } catch (e) { console.error(e); }
+        }
+
+        let strategyLegs = [];
+
+        function handleStrikeCriteriaChange(selectEl) {
+            const card = selectEl.closest('.leg-card');
+            if (!card) return;
+            const valBox = card.querySelector('.leg-strike-val-box');
+            if (valBox) {
+                if (selectEl.value === 'Closest Premium' || selectEl.value === 'Strike Distance') {
+                    valBox.style.display = 'block';
+                } else {
+                    valBox.style.display = 'none';
+                }
+            }
+        }
+
+        function addNewLeg() {
+            syncLegsFromDOM();
+            strategyLegs.push({
+                lots: 1,
+                position: 'Sell',
+                option_type: 'Call',
+                strike_criteria: 'Closest Premium',
+                strike_value: '100',
+                target_profit: { enabled: false, type: 'Points (Pts)', val: 0 },
+                stop_loss: { enabled: true, type: 'Percent (%)', val: 30 },
+                trailing_sl: { enabled: false, type: 'Points', val: 0, trail_after: 0 },
+                reentry_tgt: { enabled: false, type: 'RE ASAP', times: '1 time(s)' },
+                reentry_sl: { enabled: false, type: 'RE ASAP', times: '1 time(s)' },
+                simple_momentum: { enabled: false, type: 'Points (Pts) ↑', val: 0, time: '09:45 AM' }
+            });
+            renderLegs();
+        }
+
+        function copyLeg(index) {
+            syncLegsFromDOM();
+            if (strategyLegs[index]) {
+                const copy = JSON.parse(JSON.stringify(strategyLegs[index]));
+                strategyLegs.splice(index + 1, 0, copy);
+                renderLegs();
+            }
+        }
+
+        function deleteLeg(index) {
+            syncLegsFromDOM();
+            strategyLegs.splice(index, 1);
+            renderLegs();
+        }
+
+        function syncLegsFromDOM() {
+            const container = document.getElementById('legsContainer');
+            if (!container) return;
+            const cards = container.querySelectorAll('.leg-card');
+            cards.forEach((card, idx) => {
+                if (!strategyLegs[idx]) return;
+                const getVal = (cls) => card.querySelector(`.${cls}`)?.value;
+                const getChk = (cls) => card.querySelector(`.${cls}`)?.checked || false;
+
+                strategyLegs[idx] = {
+                    lots: parseInt(getVal('leg-lots') || 1, 10),
+                    position: getVal('leg-position') || 'Sell',
+                    option_type: getVal('leg-option-type') || 'Call',
+                    strike_criteria: getVal('leg-strike-criteria') || 'Closest Premium',
+                    strike_value: getVal('leg-strike-val') || '100',
+                    target_profit: {
+                        enabled: getChk('leg-tgt-enable'),
+                        type: getVal('leg-tgt-type') || 'Points (Pts)',
+                        val: parseFloat(getVal('leg-tgt-val') || 0)
+                    },
+                    stop_loss: {
+                        enabled: getChk('leg-sl-enable'),
+                        type: getVal('leg-sl-type') || 'Percent (%)',
+                        val: parseFloat(getVal('leg-sl-val') || 30)
+                    },
+                    trailing_sl: {
+                        enabled: getChk('leg-trail-enable'),
+                        type: getVal('leg-trail-type') || 'Points',
+                        val: parseFloat(getVal('leg-trail-val') || 0),
+                        trail_after: parseFloat(getVal('leg-trail-after') || 0)
+                    },
+                    reentry_tgt: {
+                        enabled: getChk('leg-retgt-enable'),
+                        type: getVal('leg-retgt-type') || 'RE ASAP',
+                        times: getVal('leg-retgt-times') || '1 time(s)'
+                    },
+                    reentry_sl: {
+                        enabled: getChk('leg-resl-enable'),
+                        type: getVal('leg-resl-type') || 'RE ASAP',
+                        times: getVal('leg-resl-times') || '1 time(s)'
+                    },
+                    simple_momentum: {
+                        enabled: getChk('leg-mom-enable'),
+                        type: getVal('leg-mom-type') || 'Points (Pts) ↑',
+                        val: parseFloat(getVal('leg-mom-val') || 0),
+                        time: getVal('leg-mom-time') || '09:45 AM'
+                    }
+                };
+            });
+        }
+
+        function renderLegs() {
+            const container = document.getElementById('legsContainer');
+            if (!container) return;
+
+            if (strategyLegs.length === 0) {
+                container.innerHTML = `<div style="text-align: center; padding: 1.5rem; color: #64748b; background: #ffffff; border-radius: 8px; border: 1px dashed #cbd5e1;">No strategy legs added yet. Click <strong>+ Add Leg</strong> above to create one.</div>`;
+                return;
+            }
+
+            container.innerHTML = strategyLegs.map((leg, index) => `
+                <div class="leg-card" style="background: #ffffff; color: #0f172a; border-radius: 10px; padding: 1.25rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08); margin-bottom: 1.25rem; border: 1px solid #818cf8;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <div style="font-size: 1rem; font-weight: 800; color: #4f46e5;">Leg #${index + 1}</div>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" title="Copy Leg" onclick="copyLeg(${index})" style="border: 1px solid #cbd5e1; background: #ffffff; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #475569; font-size: 0.9rem;">
+                                <i class="fa-regular fa-copy"></i>
+                            </button>
+                            <button type="button" title="Delete Leg" onclick="deleteLeg(${index})" style="border: 1px solid #fca5a5; background: #fef2f2; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #ef4444; font-size: 0.9rem;">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+                        <div class="form-group">
+                            <label style="color: #64748b; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; display: block;">LOTS</label>
+                            <input type="number" class="leg-input leg-lots" value="${leg.lots}" min="1" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 8px 10px; width: 100%; font-size: 0.85rem;">
+                        </div>
+
+                        <div class="form-group">
+                            <label style="color: #64748b; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; display: block;">POSITION</label>
+                            <select class="leg-input leg-position" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 8px 10px; width: 100%; font-size: 0.85rem;">
+                                <option value="Sell" ${leg.position === 'Sell' ? 'selected' : ''}>Sell</option>
+                                <option value="Buy" ${leg.position === 'Buy' ? 'selected' : ''}>Buy</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="color: #64748b; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; display: block;">OPTION TYPE</label>
+                            <select class="leg-input leg-option-type" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 8px 10px; width: 100%; font-size: 0.85rem;">
+                                <option value="Call" ${leg.option_type === 'Call' ? 'selected' : ''}>Call</option>
+                                <option value="Put" ${leg.option_type === 'Put' ? 'selected' : ''}>Put</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="color: #64748b; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; display: block;">SELECT STRIKE CRITERIA</label>
+                            <select class="leg-input leg-strike-criteria" onchange="handleStrikeCriteriaChange(this)" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 8px 10px; width: 100%; font-size: 0.85rem;">
+                                <option value="Closest Premium" ${leg.strike_criteria === 'Closest Premium' ? 'selected' : ''}>Closest Premium</option>
+                                <option value="ATM" ${leg.strike_criteria === 'ATM' ? 'selected' : ''}>ATM</option>
+                                <option value="OTM1" ${leg.strike_criteria === 'OTM1' ? 'selected' : ''}>OTM1</option>
+                                <option value="OTM2" ${leg.strike_criteria === 'OTM2' ? 'selected' : ''}>OTM2</option>
+                                <option value="OTM3" ${leg.strike_criteria === 'OTM3' ? 'selected' : ''}>OTM3</option>
+                                <option value="OTM4" ${leg.strike_criteria === 'OTM4' ? 'selected' : ''}>OTM4</option>
+                                <option value="OTM5" ${leg.strike_criteria === 'OTM5' ? 'selected' : ''}>OTM5</option>
+                                <option value="OTM6" ${leg.strike_criteria === 'OTM6' ? 'selected' : ''}>OTM6</option>
+                                <option value="OTM7" ${leg.strike_criteria === 'OTM7' ? 'selected' : ''}>OTM7</option>
+                                <option value="OTM8" ${leg.strike_criteria === 'OTM8' ? 'selected' : ''}>OTM8</option>
+                                <option value="OTM9" ${leg.strike_criteria === 'OTM9' ? 'selected' : ''}>OTM9</option>
+                                <option value="OTM10" ${leg.strike_criteria === 'OTM10' ? 'selected' : ''}>OTM10</option>
+                                <option value="ITM1" ${leg.strike_criteria === 'ITM1' ? 'selected' : ''}>ITM1</option>
+                                <option value="ITM2" ${leg.strike_criteria === 'ITM2' ? 'selected' : ''}>ITM2</option>
+                                <option value="ITM3" ${leg.strike_criteria === 'ITM3' ? 'selected' : ''}>ITM3</option>
+                                <option value="ITM4" ${leg.strike_criteria === 'ITM4' ? 'selected' : ''}>ITM4</option>
+                                <option value="ITM5" ${leg.strike_criteria === 'ITM5' ? 'selected' : ''}>ITM5</option>
+                                <option value="ITM6" ${leg.strike_criteria === 'ITM6' ? 'selected' : ''}>ITM6</option>
+                                <option value="ITM7" ${leg.strike_criteria === 'ITM7' ? 'selected' : ''}>ITM7</option>
+                                <option value="ITM8" ${leg.strike_criteria === 'ITM8' ? 'selected' : ''}>ITM8</option>
+                                <option value="ITM9" ${leg.strike_criteria === 'ITM9' ? 'selected' : ''}>ITM9</option>
+                                <option value="ITM10" ${leg.strike_criteria === 'ITM10' ? 'selected' : ''}>ITM10</option>
+                                <option value="Strike Distance" ${leg.strike_criteria === 'Strike Distance' ? 'selected' : ''}>Strike Distance</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group leg-strike-val-box" style="display: ${ (leg.strike_criteria === 'Closest Premium' || leg.strike_criteria === 'Strike Distance') ? 'block' : 'none' };">
+                            <label style="color: #64748b; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; display: block;">STRIKE VALUE</label>
+                            <input type="text" class="leg-input leg-strike-val" value="${leg.strike_value}" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 8px 10px; width: 100%; font-size: 0.85rem;">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;">
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-size: 0.68rem; font-weight: 800; color: #475569;">TARGET PROFIT</span>
+                                <input type="checkbox" class="leg-tgt-enable" ${leg.target_profit.enabled ? 'checked' : ''} style="accent-color: #6366f1; cursor: pointer;">
+                            </div>
+                            <select class="leg-tgt-type" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem; margin-bottom: 4px;">
+                                <option value="Points (Pts)" ${leg.target_profit.type === 'Points (Pts)' ? 'selected' : ''}>Points (Pts)</option>
+                                <option value="Percent (%)" ${leg.target_profit.type === 'Percent (%)' ? 'selected' : ''}>Percent (%)</option>
+                                <option value="Underlying Pts" ${leg.target_profit.type === 'Underlying Pts' ? 'selected' : ''}>Underlying Pts</option>
+                            </select>
+                            <input type="number" class="leg-tgt-val" value="${leg.target_profit.val}" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem;">
+                        </div>
+
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-size: 0.68rem; font-weight: 800; color: #475569;">STOP LOSS</span>
+                                <input type="checkbox" class="leg-sl-enable" ${leg.stop_loss.enabled ? 'checked' : ''} style="accent-color: #6366f1; cursor: pointer;">
+                            </div>
+                            <select class="leg-sl-type" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem; margin-bottom: 4px;">
+                                <option value="Percent (%)" ${leg.stop_loss.type === 'Percent (%)' ? 'selected' : ''}>Percent (%)</option>
+                                <option value="Points (Pts)" ${leg.stop_loss.type === 'Points (Pts)' ? 'selected' : ''}>Points (Pts)</option>
+                                <option value="Underlying Pts" ${leg.stop_loss.type === 'Underlying Pts' ? 'selected' : ''}>Underlying Pts</option>
+                            </select>
+                            <input type="number" class="leg-sl-val" value="${leg.stop_loss.val}" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem;">
+                        </div>
+
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-size: 0.68rem; font-weight: 800; color: #475569;">TRAILING SL</span>
+                                <input type="checkbox" class="leg-trail-enable" ${leg.trailing_sl.enabled ? 'checked' : ''} style="accent-color: #6366f1; cursor: pointer;">
+                            </div>
+                            <select class="leg-trail-type" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem; margin-bottom: 4px;">
+                                <option value="Points" ${leg.trailing_sl.type === 'Points' ? 'selected' : ''}>Points</option>
+                                <option value="Percent" ${leg.trailing_sl.type === 'Percent' ? 'selected' : ''}>Percent</option>
+                            </select>
+                            <input type="number" class="leg-trail-val" value="${leg.trailing_sl.val}" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem; margin-bottom: 4px;">
+                            <div style="font-size: 0.65rem; color: #64748b;">Trail after profit of <input type="number" class="leg-trail-after" value="${leg.trailing_sl.trail_after || 0}" style="width: 35px; padding: 1px 3px; font-size: 0.65rem; border: 1px solid #cbd5e1; border-radius: 3px;"> Pts</div>
+                        </div>
+
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-size: 0.68rem; font-weight: 800; color: #475569;">RE-ENTRY ON TGT</span>
+                                <input type="checkbox" class="leg-retgt-enable" ${leg.reentry_tgt.enabled ? 'checked' : ''} style="accent-color: #6366f1; cursor: pointer;">
+                            </div>
+                            <select class="leg-retgt-type" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem; margin-bottom: 4px;">
+                                <option value="RE ASAP" ${leg.reentry_tgt.type === 'RE ASAP' ? 'selected' : ''}>RE ASAP</option>
+                                <option value="RE ON SIGNAL" ${leg.reentry_tgt.type === 'RE ON SIGNAL' ? 'selected' : ''}>RE ON SIGNAL</option>
+                                <option value="RE COST" ${leg.reentry_tgt.type === 'RE COST' ? 'selected' : ''}>RE COST</option>
+                            </select>
+                            <select class="leg-retgt-times" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem;">
+                                <option value="1 time(s)" ${leg.reentry_tgt.times === '1 time(s)' ? 'selected' : ''}>1 time(s)</option>
+                                <option value="2 time(s)" ${leg.reentry_tgt.times === '2 time(s)' ? 'selected' : ''}>2 time(s)</option>
+                                <option value="3 time(s)" ${leg.reentry_tgt.times === '3 time(s)' ? 'selected' : ''}>3 time(s)</option>
+                            </select>
+                        </div>
+
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-size: 0.68rem; font-weight: 800; color: #475569;">RE-ENTRY ON SL</span>
+                                <input type="checkbox" class="leg-resl-enable" ${leg.reentry_sl.enabled ? 'checked' : ''} style="accent-color: #6366f1; cursor: pointer;">
+                            </div>
+                            <select class="leg-resl-type" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem; margin-bottom: 4px;">
+                                <option value="RE ASAP" ${leg.reentry_sl.type === 'RE ASAP' ? 'selected' : ''}>RE ASAP</option>
+                                <option value="RE ON SIGNAL" ${leg.reentry_sl.type === 'RE ON SIGNAL' ? 'selected' : ''}>RE ON SIGNAL</option>
+                                <option value="RE COST" ${leg.reentry_sl.type === 'RE COST' ? 'selected' : ''}>RE COST</option>
+                            </select>
+                            <select class="leg-resl-times" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem;">
+                                <option value="1 time(s)" ${leg.reentry_sl.times === '1 time(s)' ? 'selected' : ''}>1 time(s)</option>
+                                <option value="2 time(s)" ${leg.reentry_sl.times === '2 time(s)' ? 'selected' : ''}>2 time(s)</option>
+                                <option value="3 time(s)" ${leg.reentry_sl.times === '3 time(s)' ? 'selected' : ''}>3 time(s)</option>
+                            </select>
+                        </div>
+
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-size: 0.68rem; font-weight: 800; color: #475569;">SIMPLE MOMENTUM</span>
+                                <input type="checkbox" class="leg-mom-enable" ${leg.simple_momentum.enabled ? 'checked' : ''} style="accent-color: #6366f1; cursor: pointer;">
+                            </div>
+                            <select class="leg-mom-type" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem; margin-bottom: 4px;">
+                                <option value="Points (Pts) ↑" ${leg.simple_momentum.type === 'Points (Pts) ↑' ? 'selected' : ''}>Points (Pts) ↑</option>
+                                <option value="Points (Pts) ↓" ${leg.simple_momentum.type === 'Points (Pts) ↓' ? 'selected' : ''}>Points (Pts) ↓</option>
+                                <option value="Percent (%) ↑" ${leg.simple_momentum.type === 'Percent (%) ↑' ? 'selected' : ''}>Percent (%) ↑</option>
+                            </select>
+                            <input type="number" class="leg-mom-val" value="${leg.simple_momentum.val}" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; width: 100%; font-size: 0.78rem; margin-bottom: 4px;">
+                            <input type="text" class="leg-mom-time" value="${leg.simple_momentum.time || '09:45 AM'}" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 6px; width: 100%; font-size: 0.7rem; color: #64748b;">
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openAddStrategyModal() {
+            currentEditingStrategyId = null;
+            if (document.getElementById('s_strategy_name')) document.getElementById('s_strategy_name').value = 'TBS Strategy';
+            if (document.getElementById('s_scrip_index')) document.getElementById('s_scrip_index').value = 'NIFTY';
+            if (document.getElementById('s_entry_time')) document.getElementById('s_entry_time').value = '09:20';
+            if (document.getElementById('s_exit_time')) document.getElementById('s_exit_time').value = '15:15';
+            if (document.getElementById('s_delay_entry')) document.getElementById('s_delay_entry').value = '0';
+            if (document.getElementById('s_overall_target')) document.getElementById('s_overall_target').value = '0';
+            if (document.getElementById('s_overall_sl')) document.getElementById('s_overall_sl').value = '0';
+            if (document.getElementById('s_overall_reentry')) document.getElementById('s_overall_reentry').value = 'None';
+            if (document.getElementById('s_enable_trailing_sl')) document.getElementById('s_enable_trailing_sl').checked = false;
+
+            strategyLegs = [];
+            addNewLeg();
+            switchView('configureStrategyView');
+        }
+
+        async function editStrategy(id) {
+            const strat = cachedStrategies.find(s => s.id === id);
+            if (!strat) {
+                alert('Strategy not found');
+                return;
+            }
+
+            currentEditingStrategyId = id;
+
+            if (document.getElementById('s_strategy_name')) document.getElementById('s_strategy_name').value = strat.name || 'TBS Strategy';
+            if (document.getElementById('s_scrip_index')) {
+                document.getElementById('s_scrip_index').value = strat.scrip_index || strat.symbol || 'NIFTY';
+                await updateExpiryDates(strat.scrip_index || strat.symbol || 'NIFTY');
+            }
+            if (document.getElementById('s_strategy_expiry')) document.getElementById('s_strategy_expiry').value = strat.expiry || 'Weekly';
+            if (document.getElementById('s_entry_time')) document.getElementById('s_entry_time').value = strat.entry_time || '09:20';
+            if (document.getElementById('s_exit_time')) document.getElementById('s_exit_time').value = strat.exit_time || '15:15';
+            if (document.getElementById('s_product_code')) document.getElementById('s_product_code').value = strat.product_code || 'NRML (Normal Carrying)';
+            if (document.getElementById('s_underlying_source')) document.getElementById('s_underlying_source').value = strat.underlying_source || 'Cash (Spot Index LTP)';
+            if (document.getElementById('s_square_off_type')) document.getElementById('s_square_off_type').value = strat.square_off_type || 'Partial (Square off hit leg only)';
+            if (document.getElementById('s_trail_sl')) document.getElementById('s_trail_sl').value = strat.trail_sl || 'None';
+            if (document.getElementById('s_target_sl_ref')) document.getElementById('s_target_sl_ref').value = strat.target_sl_ref || 'Traded Price';
+            if (document.getElementById('s_delay_entry')) document.getElementById('s_delay_entry').value = strat.delay_entry || 0;
+            if (document.getElementById('s_overall_target')) document.getElementById('s_overall_target').value = strat.overall_target || 0;
+            if (document.getElementById('s_overall_sl')) document.getElementById('s_overall_sl').value = strat.overall_sl || 0;
+            if (document.getElementById('s_overall_reentry')) document.getElementById('s_overall_reentry').value = strat.overall_reentry || 'None';
+            if (document.getElementById('s_enable_trailing_sl')) document.getElementById('s_enable_trailing_sl').checked = !!strat.enable_trailing_sl;
+
+            strategyLegs = JSON.parse(JSON.stringify(strat.legs || []));
+            if (strategyLegs.length === 0) {
+                addNewLeg();
+            } else {
+                renderLegs();
+            }
+
+            switchView('configureStrategyView');
+        }
+
+        function closeAddStrategyModal() {
+            document.getElementById('addStrategyModal').style.display = 'none';
+        }
+
+        async function handleSaveNewStrategy(e) {
+            e.preventDefault();
+            syncLegsFromDOM();
+            const scripIndex = document.getElementById('s_scrip_index')?.value || document.getElementById('s_symbol')?.value || 'NIFTY';
+            const payload = {
+                id: currentEditingStrategyId,
+                name: document.getElementById('s_strategy_name')?.value || 'TBS Strategy',
+                symbol: scripIndex,
+                scrip_index: scripIndex,
+                expiry: document.getElementById('s_strategy_expiry')?.value || 'Weekly',
+                entry_time: document.getElementById('s_entry_time')?.value || '09:20',
+                exit_time: document.getElementById('s_exit_time')?.value || '15:15',
+                product_code: document.getElementById('s_product_code')?.value || 'NRML (Normal Carrying)',
+                underlying_source: document.getElementById('s_underlying_source')?.value || 'Cash (Spot Index LTP)',
+                square_off_type: document.getElementById('s_square_off_type')?.value || 'Partial (Square off hit leg only)',
+                trail_sl: document.getElementById('s_trail_sl')?.value || 'None',
+                target_sl_ref: document.getElementById('s_target_sl_ref')?.value || 'Traded Price',
+                delay_entry: parseInt(document.getElementById('s_delay_entry')?.value || 0, 10),
+                overall_target: parseFloat(document.getElementById('s_overall_target')?.value || 0),
+                overall_sl: parseFloat(document.getElementById('s_overall_sl')?.value || 0),
+                overall_reentry: document.getElementById('s_overall_reentry')?.value || 'None',
+                enable_trailing_sl: document.getElementById('s_enable_trailing_sl')?.checked || false,
+                broker: document.getElementById('s_broker')?.value || 'Kotak Neo',
+                lots: document.getElementById('s_lots')?.value || 1,
+                batches: document.getElementById('s_batches')?.value || 1,
+                entry_interval: document.getElementById('s_entry_interval')?.value || '0',
+                exit_interval: document.getElementById('s_exit_interval')?.value || '0',
+                sl: document.getElementById('s_sl')?.value || '2 Pts',
+                strike_selection: document.getElementById('s_strike')?.value || 'Premium closest to 3',
+                legs: strategyLegs,
+                trade_mode: currentTradeMode
+            };
+
+            const endpoint = currentEditingStrategyId ? '/api/strategies/update' : '/api/strategies/add';
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    currentEditingStrategyId = null;
+                    closeAddStrategyModal();
+                    switchView('timeBasedView');
+                    fetchStrategies();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function toggleStrategy(id) {
+            try {
+                await fetch('/api/strategies/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+                await fetchStrategies();
+                await fetchStrategyTracker(id);
+            } catch (e) { console.error(e); }
+        }
+
+        let activeTrackingStrategyId = null;
+
+        async function fetchStrategyTracker(stratId = null) {
+            const container = document.getElementById('strategyTrackerContainer');
+            if (!container) return;
+
+            if (!stratId && cachedStrategies && cachedStrategies.length > 0) {
+                const runningStrat = cachedStrategies.find(s => s.status === 'RUNNING' || s.status === 'ACTIVE');
+                if (runningStrat) {
+                    stratId = runningStrat.id;
+                } else if (activeTrackingStrategyId) {
+                    stratId = activeTrackingStrategyId;
+                }
+            }
+
+            if (!stratId) {
+                container.style.display = 'none';
+                return;
+            }
+
+            activeTrackingStrategyId = stratId;
+
+            try {
+                const res = await fetch(`/api/strategies/tracker?id=${encodeURIComponent(stratId)}`);
+                const data = await res.json();
+                if (!data.success) {
+                    container.style.display = 'none';
+                    return;
+                }
+
+                container.style.display = 'block';
+                document.getElementById('trackerStratName').innerText = data.name || 'TBS Strategy';
+                document.getElementById('trackerStratSubtitle').innerText = data.subtitle || 'Tracking closest premium contracts...';
+
+                const tbody = document.getElementById('trackerContractsTbody');
+                if (tbody) {
+                    tbody.innerHTML = data.contracts.map(c => `
+                        <tr>
+                            <td style="font-weight: 700; color: #0f172a;">${c.contract_symbol}</td>
+                            <td><span style="background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 12px; font-weight: 700; font-size: 0.75rem;">${c.type}</span></td>
+                            <td style="font-weight: 600;">${c.strike}</td>
+                            <td>${c.lots}</td>
+                            <td style="font-weight: 700; color: #0284c7;">${c.ltp}</td>
+                            <td>${c.entry}</td>
+                            <td>${c.stoploss}</td>
+                            <td style="font-weight: 700;">${c.pnl}</td>
+                            <td><span style="background: #f1f5f9; color: #64748b; padding: 4px 10px; border-radius: 12px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px;">${c.status}</span></td>
+                        </tr>
+                    `).join('');
+                }
+
+                if (data.contracts && data.contracts.length > 0) {
+                    const cSummary = data.contracts.map(c => `${c.contract_symbol} (${c.type} ${c.strike} @ ${c.ltp})`).join(', ');
+                    addConsoleLog(`Resolved Option Contracts for ${data.name}: ${cSummary} (Source: Master Scrip & Live Kotak Neo Quote API)`, 'CONTRACT TRACKER');
+                }
+            } catch (e) {
+                console.error('Tracker fetch error:', e);
+            }
+        }
+
+        async function stopCurrentStrategyTracker() {
+            if (!activeTrackingStrategyId) return;
+            try {
+                await fetch('/api/strategies/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: activeTrackingStrategyId })
+                });
+                activeTrackingStrategyId = null;
+                document.getElementById('strategyTrackerContainer').style.display = 'none';
+                fetchStrategies();
+            } catch (e) { console.error(e); }
+        }
+
+        async function deleteStrategy(id) {
+            if (!confirm('Are you sure you want to delete this strategy?')) return;
+            try {
+                await fetch('/api/strategies/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+                fetchStrategies();
+            } catch (e) { console.error(e); }
+        }
+
+        async function handleBrokerLogin(e) {
+            e.preventDefault();
+            const alertDiv = document.getElementById('brokerAlert');
+            alertDiv.innerHTML = '<span style="color: var(--accent-cyan);">Connecting to Kotak Neo 2FA...</span>';
+
+            const payload = {
+                consumer_key: document.getElementById('b_key').value,
+                mobile_number: document.getElementById('b_mobile').value,
+                ucc: document.getElementById('b_ucc').value,
+                mpin: document.getElementById('b_mpin').value,
+                totp: document.getElementById('b_totp').value,
+                totp_secret: document.getElementById('b_secret').value,
+                environment: 'prod'
+            };
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alertDiv.innerHTML = `<span style="color: var(--accent-green);">${data.message}</span>`;
+                    await checkSessionStatus();
+                    setTimeout(() => {
+                        switchView('timeBasedView', document.querySelector('.sub-item'));
+                    }, 400);
+                } else {
+                    alertDiv.innerHTML = `<span style="color: var(--accent-red);">${data.error}</span>`;
+                }
+            } catch (err) { alertDiv.innerHTML = `<span style="color: var(--accent-red);">${err.message}</span>`; }
+        }
+
+        async function logoutBroker() {
+            try {
+                await fetch('/api/logout', { method: 'POST' });
+                checkSessionStatus();
+                alert('Logged out.');
+            } catch (e) { console.error(e); }
+        }
+
+        async function handleOMSPlaceOrder() {
+            const payload = {
+                exchange_segment: 'nse_cm',
+                trading_symbol: document.getElementById('oms_symbol').value,
+                transaction_type: document.getElementById('oms_side').value,
+                product: 'CNC',
+                order_type: document.getElementById('oms_type').value,
+                quantity: document.getElementById('oms_qty').value,
+                price: '0',
+                validity: 'DAY',
+                tag: 'oms_order'
+            };
+
+            try {
+                const res = await fetch('/api/place_order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) alert(`OMS Order Transmitted! Order ID: ${data.order_id || 'PROCESSED'}`);
+                else alert(`Order Failed: ${data.error}`);
+            } catch (e) { alert(e.message); }
+        }
+
+        async function executeSquareOffAll() {
+            if (!confirm('Square off all positions?')) return;
+            try {
+                const res = await fetch('/api/oms/square_off_all', { method: 'POST' });
+                const data = await res.json();
+                alert(data.message || data.error);
+            } catch (e) { alert(e.message); }
+        }
+    </script>
+</body>
+</html>
