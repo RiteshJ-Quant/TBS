@@ -25,5 +25,3 @@ idna==2.10
 pyjsparser==2.7.1
 six==1.16.0
 
-# Local SDK Package
--e ./Kotak-neo-api-v2
