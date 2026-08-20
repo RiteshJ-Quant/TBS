@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,9 +8,11 @@
     <!-- Google Fonts & Font Awesome Icons -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+
     <style>
         :root {
             --bg-sidebar: #003642;
@@ -19,17 +22,17 @@
             --bg-main: #f0f7f9;
             --bg-card: #ffffff;
             --border-color: #d1e4e8;
-            
+
             --text-primary: #0f172a;
             --text-muted: #64748b;
             --text-sidebar: #e2e8f0;
-            
+
             --accent-cyan: #00a8cc;
             --accent-cyan-hover: #0088a6;
             --accent-red: #ef4444;
             --accent-green: #10b981;
             --accent-gold: #f59e0b;
-            
+
             --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.05);
             --radius: 8px;
             --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -398,9 +401,17 @@
             transition: var(--transition);
         }
 
-        .action-icon-btn.play { color: var(--accent-green); }
-        .action-icon-btn.edit { color: var(--accent-cyan); }
-        .action-icon-btn.delete { color: var(--accent-red); }
+        .action-icon-btn.play {
+            color: var(--accent-green);
+        }
+
+        .action-icon-btn.edit {
+            color: var(--accent-cyan);
+        }
+
+        .action-icon-btn.delete {
+            color: var(--accent-red);
+        }
 
         .action-icon-btn:hover {
             transform: scale(1.15);
@@ -409,7 +420,10 @@
         /* Modal styling */
         .modal-overlay {
             position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background: rgba(0, 0, 0, 0.5);
             backdrop-filter: blur(4px);
             display: none;
@@ -473,11 +487,19 @@
         }
 
         @media (max-width: 900px) {
-            aside.sidebar { width: 70px; }
-            .user-welcome-card, .sub-menu, .nav-item span { display: none; }
+            aside.sidebar {
+                width: 70px;
+            }
+
+            .user-welcome-card,
+            .sub-menu,
+            .nav-item span {
+                display: none;
+            }
         }
     </style>
 </head>
+
 <body>
 
     <!-- Left Sidebar -->
@@ -492,7 +514,7 @@
                 <i class="fa-solid fa-microchip"></i>
                 <span>Strategies</span>
             </div>
-            
+
             <div class="sub-menu">
                 <div class="sub-item active" onclick="switchView('timeBasedView', this)">
                     <i class="fa-regular fa-clock"></i> Time Based
@@ -532,8 +554,8 @@
             </div>
 
             <div class="header-right">
-                <div class="ticker-pill" id="niftyTicker">NIFTY: 24383.60</div>
-                <div class="ticker-pill" id="sensexTicker">SENSEX: 78094.64</div>
+                <div class="ticker-pill" id="niftyTicker">NIFTY: --</div>
+                <div class="ticker-pill" id="sensexTicker">SENSEX: --</div>
 
                 <div class="clock-badge">
                     <div id="headerClock">10:08:33</div>
@@ -542,7 +564,8 @@
 
                 <div class="trade-mode-toggle">
                     <button class="mode-btn" id="btnDemoMode" onclick="setTradeMode('DEMO')">DEMO TRADE</button>
-                    <button class="mode-btn active real" id="btnRealMode" onclick="setTradeMode('REAL')">REAL TRADE</button>
+                    <button class="mode-btn active real" id="btnRealMode" onclick="setTradeMode('REAL')">REAL
+                        TRADE</button>
                 </div>
 
                 <div class="cache-badge" id="sessionBadge">
@@ -591,7 +614,8 @@
                             </thead>
                             <tbody id="allStrategiesTbody">
                                 <tr>
-                                    <td colspan="12" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                                    <td colspan="12"
+                                        style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
                                         Loading strategies...
                                     </td>
                                 </tr>
@@ -604,7 +628,8 @@
                 <div class="content-card">
                     <div class="content-card-header">
                         <div class="content-card-title">Active Strategies</div>
-                        <button class="btn-cyan" onclick="fetchStrategies()" style="padding: 6px 12px; font-size: 0.75rem;">
+                        <button class="btn-cyan" onclick="fetchStrategies()"
+                            style="padding: 6px 12px; font-size: 0.75rem;">
                             REFRESH
                         </button>
                     </div>
@@ -629,7 +654,8 @@
                             </thead>
                             <tbody id="activeStrategiesTbody">
                                 <tr>
-                                    <td colspan="12" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                                    <td colspan="12"
+                                        style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
                                         No active strategies.
                                     </td>
                                 </tr>
@@ -639,18 +665,25 @@
                 </div>
 
                 <!-- LIVE EXECUTION TRACKER CARD (BELOW ACTIVE STRATEGIES) -->
-                <div id="strategyTrackerContainer" class="content-card" style="background: #ffffff; color: #0f172a; border-radius: 10px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-top: 1.5rem; margin-bottom: 1.5rem; border: 1px solid #e2e8f0; display: none;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 1rem 1.25rem; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 1.5rem;">
+                <div id="strategyTrackerContainer" class="content-card"
+                    style="background: #ffffff; color: #0f172a; border-radius: 10px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-top: 1.5rem; margin-bottom: 1.5rem; border: 1px solid #e2e8f0; display: none;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 1rem 1.25rem; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 1.5rem;">
                         <div>
-                            <div id="trackerStratName" style="font-size: 1.1rem; font-weight: 800; color: #0284c7; letter-spacing: 0.5px;">920 TBS</div>
-                            <div id="trackerStratSubtitle" style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">Tracking closest premium contracts...</div>
+                            <div id="trackerStratName"
+                                style="font-size: 1.1rem; font-weight: 800; color: #0284c7; letter-spacing: 0.5px;">920
+                                TBS</div>
+                            <div id="trackerStratSubtitle" style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">
+                                Tracking closest premium contracts...</div>
                         </div>
-                        <button type="button" onclick="stopCurrentStrategyTracker()" style="background: #ef4444; color: #ffffff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        <button type="button" onclick="stopCurrentStrategyTracker()"
+                            style="background: #ef4444; color: #ffffff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 8px;">
                             <i class="fa-solid fa-square" style="font-size: 0.7rem;"></i> Stop Strategy
                         </button>
                     </div>
 
-                    <div style="font-size: 0.8rem; font-weight: 800; color: #475569; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 1rem;">
+                    <div
+                        style="font-size: 0.8rem; font-weight: 800; color: #475569; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 1rem;">
                         SELECTED OPTION CONTRACTS
                     </div>
 
@@ -677,21 +710,27 @@
                 </div>
 
                 <!-- DATA SOURCE & SYSTEM EXECUTION CONSOLE -->
-                <div id="executionConsoleContainer" class="content-card" style="background: #0f172a; color: #f8fafc; border-radius: 10px; padding: 1.25rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); margin-top: 1.5rem; border: 1px solid #1e293b;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #334155; padding-bottom: 0.75rem;">
+                <div id="executionConsoleContainer" class="content-card"
+                    style="background: #0f172a; color: #f8fafc; border-radius: 10px; padding: 1.25rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); margin-top: 1.5rem; border: 1px solid #1e293b;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #334155; padding-bottom: 0.75rem;">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <i class="fa-solid fa-terminal" style="color: #38bdf8; font-size: 0.9rem;"></i>
-                            <span style="font-size: 0.85rem; font-weight: 800; color: #38bdf8; letter-spacing: 0.5px; text-transform: uppercase;">
+                            <span
+                                style="font-size: 0.85rem; font-weight: 800; color: #38bdf8; letter-spacing: 0.5px; text-transform: uppercase;">
                                 DATA SOURCE & LIVE SYSTEM CONSOLE
                             </span>
                         </div>
-                        <button type="button" onclick="clearExecutionConsole()" style="background: transparent; color: #94a3b8; border: 1px solid #334155; padding: 3px 10px; border-radius: 4px; font-size: 0.72rem; cursor: pointer;">
+                        <button type="button" onclick="clearExecutionConsole()"
+                            style="background: transparent; color: #94a3b8; border: 1px solid #334155; padding: 3px 10px; border-radius: 4px; font-size: 0.72rem; cursor: pointer;">
                             CLEAR CONSOLE
                         </button>
                     </div>
 
-                    <div id="consoleLogBox" style="font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 0.78rem; line-height: 1.6; max-height: 180px; overflow-y: auto; background: #020617; border-radius: 6px; padding: 12px; border: 1px solid #1e293b; color: #38bdf8;">
-                        <div style="color: #64748b;">[System Console Initialized] Listening for Live Kotak Neo API & WebSocket feed...</div>
+                    <div id="consoleLogBox"
+                        style="font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 0.78rem; line-height: 1.6; max-height: 180px; overflow-y: auto; background: #020617; border-radius: 6px; padding: 12px; border: 1px solid #1e293b; color: #38bdf8;">
+                        <div style="color: #64748b;">[System Console Initialized] Listening for Live Kotak Neo API &
+                            WebSocket feed...</div>
                     </div>
                 </div>
             </div>
@@ -704,7 +743,8 @@
                 <div class="content-card">
                     <div class="content-card-header">
                         <div class="content-card-title">Multi-Leg Basket Order Management System</div>
-                        <button class="btn-cyan" onclick="executeSquareOffAll()" style="background-color: var(--accent-red);">
+                        <button class="btn-cyan" onclick="executeSquareOffAll()"
+                            style="background-color: var(--accent-red);">
                             <i class="fa-solid fa-ban"></i> SQUARE OFF ALL POSITIONS
                         </button>
                     </div>
@@ -756,11 +796,13 @@
                         <div class="form-grid">
                             <div class="form-group">
                                 <label>Consumer Key</label>
-                                <input type="password" id="b_key" class="form-control" placeholder="API Consumer Key" required>
+                                <input type="password" id="b_key" class="form-control" placeholder="API Consumer Key"
+                                    required>
                             </div>
                             <div class="form-group">
                                 <label>Registered Mobile Number</label>
-                                <input type="text" id="b_mobile" class="form-control" placeholder="+91XXXXXXXXXX" required>
+                                <input type="text" id="b_mobile" class="form-control" placeholder="+91XXXXXXXXXX"
+                                    required>
                             </div>
                             <div class="form-group">
                                 <label>UCC (Client Code)</label>
@@ -776,7 +818,8 @@
                             </div>
                             <div class="form-group">
                                 <label>TOTP Secret Key (Optional)</label>
-                                <input type="password" id="b_secret" class="form-control" placeholder="32-character secret">
+                                <input type="password" id="b_secret" class="form-control"
+                                    placeholder="32-character secret">
                             </div>
                         </div>
 
@@ -809,29 +852,43 @@
             <!-- ================= VIEW 5: CONFIGURE STRATEGY TEMPLATE ================= -->
             <div id="configureStrategyView" class="view-panel" style="display: none;">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1.5rem; flex-wrap: wrap;">
-                    <button type="button" class="btn-cyan" style="background: #ffffff; color: #0284c7; border: 1px solid #cbd5e1; padding: 8px 16px; font-weight: 600; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px;" onclick="switchView('timeBasedView')">
+                    <button type="button" class="btn-cyan"
+                        style="background: #ffffff; color: #0284c7; border: 1px solid #cbd5e1; padding: 8px 16px; font-weight: 600; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px;"
+                        onclick="switchView('timeBasedView')">
                         <i class="fa-solid fa-arrow-left"></i> Back to Templates
                     </button>
-                    <div style="color: #0284c7; font-size: 1.4rem; font-weight: 700; letter-spacing: -0.3px;">Configure Strategy Template</div>
+                    <div style="color: #0284c7; font-size: 1.4rem; font-weight: 700; letter-spacing: -0.3px;">Configure
+                        Strategy Template</div>
                 </div>
 
                 <form id="configureStrategyForm" onsubmit="handleSaveNewStrategy(event)">
                     <!-- GENERAL SETTINGS CARD -->
-                    <div class="content-card" style="background: #ffffff; color: #0f172a; border-radius: 10px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem; border: 1px solid #e2e8f0;">
-                        <div style="font-size: 0.95rem; font-weight: 800; color: #334155; letter-spacing: 0.5px; margin-bottom: 1.25rem; text-transform: uppercase;">
+                    <div class="content-card"
+                        style="background: #ffffff; color: #0f172a; border-radius: 10px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem; border: 1px solid #e2e8f0;">
+                        <div
+                            style="font-size: 0.95rem; font-weight: 800; color: #334155; letter-spacing: 0.5px; margin-bottom: 1.25rem; text-transform: uppercase;">
                             GENERAL SETTINGS
                         </div>
 
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem 1.5rem;">
+                        <div
+                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem 1.5rem;">
                             <!-- ROW 1 -->
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">STRATEGY NAME</label>
-                                <input type="text" id="s_strategy_name" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="TBS Strategy" required>
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">STRATEGY
+                                    NAME</label>
+                                <input type="text" id="s_strategy_name" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;"
+                                    value="TBS Strategy" required>
                             </div>
 
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">SCRIP INDEX</label>
-                                <select id="s_scrip_index" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" onchange="updateExpiryDates(this.value)" required>
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">SCRIP
+                                    INDEX</label>
+                                <select id="s_scrip_index" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;"
+                                    onchange="updateExpiryDates(this.value)" required>
                                     <option value="" disabled>Select Index</option>
                                     <option value="NIFTY" selected>NIFTY</option>
                                     <option value="BANKNIFTY">BANKNIFTY</option>
@@ -842,10 +899,14 @@
                             </div>
 
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">STRATEGY EXPIRY</label>
-                                <select id="s_strategy_expiry" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">STRATEGY
+                                    EXPIRY</label>
+                                <select id="s_strategy_expiry" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
                                     <option value="" disabled>Select Expiry</option>
-                                    <option value="Current Expiry (20-AUG-2026)" selected>Current Expiry (20-AUG-2026)</option>
+                                    <option value="Current Expiry (20-AUG-2026)" selected>Current Expiry (20-AUG-2026)
+                                    </option>
                                     <option value="Next Expiry (27-AUG-2026)">Next Expiry (27-AUG-2026)</option>
                                     <option value="Monthly Expiry (27-AUG-2026)">Monthly Expiry (27-AUG-2026)</option>
                                     <option value="Far Expiry (03-SEP-2026)">Far Expiry (03-SEP-2026)</option>
@@ -854,18 +915,29 @@
 
                             <!-- ROW 2 -->
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">ENTRY TIME (24H HH:MM)</label>
-                                <input type="text" id="s_entry_time" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="09:20" required>
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">ENTRY
+                                    TIME (24H HH:MM)</label>
+                                <input type="text" id="s_entry_time" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;"
+                                    value="09:20" required>
                             </div>
 
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">EXIT TIME (24H HH:MM)</label>
-                                <input type="text" id="s_exit_time" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="15:15" required>
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">EXIT
+                                    TIME (24H HH:MM)</label>
+                                <input type="text" id="s_exit_time" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;"
+                                    value="15:15" required>
                             </div>
 
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">PRODUCT CODE</label>
-                                <select id="s_product_code" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">PRODUCT
+                                    CODE</label>
+                                <select id="s_product_code" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
                                     <option value="NRML (Normal Carrying)" selected>NRML (Normal Carrying)</option>
                                     <option value="MIS (Intraday)">MIS (Intraday)</option>
                                     <option value="CNC (Delivery)">CNC (Delivery)</option>
@@ -874,24 +946,35 @@
 
                             <!-- ROW 3 -->
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">UNDERLYING SOURCE</label>
-                                <select id="s_underlying_source" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">UNDERLYING
+                                    SOURCE</label>
+                                <select id="s_underlying_source" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
                                     <option value="Cash (Spot Index LTP)" selected>Cash (Spot Index LTP)</option>
                                     <option value="Futures LTP">Futures LTP</option>
                                 </select>
                             </div>
 
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">SQUARE OFF TYPE</label>
-                                <select id="s_square_off_type" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
-                                    <option value="Partial (Square off hit leg only)" selected>Partial (Square off hit leg only)</option>
-                                    <option value="Complete (Square off all legs)">Complete (Square off all legs)</option>
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">SQUARE
+                                    OFF TYPE</label>
+                                <select id="s_square_off_type" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                    <option value="Partial (Square off hit leg only)" selected>Partial (Square off hit
+                                        leg only)</option>
+                                    <option value="Complete (Square off all legs)">Complete (Square off all legs)
+                                    </option>
                                 </select>
                             </div>
 
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">TRAIL SL TO BREAK-EVEN PRICE</label>
-                                <select id="s_trail_sl" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">TRAIL
+                                    SL TO BREAK-EVEN PRICE</label>
+                                <select id="s_trail_sl" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
                                     <option value="None" selected>None</option>
                                     <option value="Move all legs to entry cost">Move all legs to entry cost</option>
                                     <option value="Move SL enabled leg only">Move SL enabled leg only</option>
@@ -901,16 +984,22 @@
                     </div>
 
                     <!-- EXECUTION & OVERALL STRATEGY SETTINGS CARD -->
-                    <div class="content-card" style="background: #ffffff; color: #0f172a; border-radius: 10px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem; border: 1px solid #e2e8f0;">
-                        <div style="font-size: 0.95rem; font-weight: 800; color: #334155; letter-spacing: 0.5px; margin-bottom: 1.25rem; text-transform: uppercase;">
+                    <div class="content-card"
+                        style="background: #ffffff; color: #0f172a; border-radius: 10px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem; border: 1px solid #e2e8f0;">
+                        <div
+                            style="font-size: 0.95rem; font-weight: 800; color: #334155; letter-spacing: 0.5px; margin-bottom: 1.25rem; text-transform: uppercase;">
                             EXECUTION & OVERALL STRATEGY SETTINGS
                         </div>
 
                         <!-- ROW 1 -->
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+                        <div
+                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">TARGET/SL REFERENCE PRICE</label>
-                                <select id="s_target_sl_ref" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">TARGET/SL
+                                    REFERENCE PRICE</label>
+                                <select id="s_target_sl_ref" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
                                     <option value="Traded Price" selected>Traded Price</option>
                                     <option value="Avg Price">Avg Price</option>
                                     <option value="LTP">LTP</option>
@@ -918,26 +1007,42 @@
                             </div>
 
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">DELAY ENTRY (SECONDS, 0-50)</label>
-                                <input type="number" id="s_delay_entry" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="0" min="0" max="50">
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">DELAY
+                                    ENTRY (SECONDS, 0-50)</label>
+                                <input type="number" id="s_delay_entry" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;"
+                                    value="0" min="0" max="50">
                             </div>
                         </div>
 
                         <!-- ROW 2 -->
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem 1.5rem; margin-bottom: 1.5rem;">
+                        <div
+                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem 1.5rem; margin-bottom: 1.5rem;">
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">OVERALL TARGET PROFIT (RS.)</label>
-                                <input type="number" id="s_overall_target" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="0" min="0">
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">OVERALL
+                                    TARGET PROFIT (RS.)</label>
+                                <input type="number" id="s_overall_target" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;"
+                                    value="0" min="0">
                             </div>
 
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">OVERALL STOP LOSS (RS.)</label>
-                                <input type="number" id="s_overall_sl" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;" value="0" min="0">
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">OVERALL
+                                    STOP LOSS (RS.)</label>
+                                <input type="number" id="s_overall_sl" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;"
+                                    value="0" min="0">
                             </div>
 
                             <div class="form-group">
-                                <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">OVERALL RE-ENTRY ON SL</label>
-                                <select id="s_overall_reentry" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
+                                <label
+                                    style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">OVERALL
+                                    RE-ENTRY ON SL</label>
+                                <select id="s_overall_reentry" class="form-control"
+                                    style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 10px 12px; width: 100%; font-size: 0.9rem;">
                                     <option value="None" selected>None</option>
                                     <option value="Re-entry ASAP">Re-entry ASAP</option>
                                     <option value="Re-entry on Signal">Re-entry on Signal</option>
@@ -948,8 +1053,10 @@
 
                         <!-- ROW 3: CHECKBOX -->
                         <div style="display: flex; align-items: center; gap: 8px; margin-top: 0.5rem;">
-                            <input type="checkbox" id="s_enable_trailing_sl" style="width: 16px; height: 16px; accent-color: #0284c7; cursor: pointer;">
-                            <label for="s_enable_trailing_sl" style="color: #334155; font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer;">
+                            <input type="checkbox" id="s_enable_trailing_sl"
+                                style="width: 16px; height: 16px; accent-color: #0284c7; cursor: pointer;">
+                            <label for="s_enable_trailing_sl"
+                                style="color: #334155; font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer;">
                                 ENABLE OVERALL TRAILING SL
                             </label>
                         </div>
@@ -957,11 +1064,15 @@
 
                     <!-- STRATEGY LEGS CONTAINER -->
                     <div style="margin-bottom: 1.5rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                            <div style="font-size: 0.95rem; font-weight: 800; color: #334155; letter-spacing: 0.5px; text-transform: uppercase;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <div
+                                style="font-size: 0.95rem; font-weight: 800; color: #334155; letter-spacing: 0.5px; text-transform: uppercase;">
                                 STRATEGY LEGS
                             </div>
-                            <button type="button" class="btn-cyan" style="background: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; padding: 6px 14px; font-weight: 600; border-radius: 6px; font-size: 0.85rem; cursor: pointer;" onclick="addNewLeg()">
+                            <button type="button" class="btn-cyan"
+                                style="background: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; padding: 6px 14px; font-weight: 600; border-radius: 6px; font-size: 0.85rem; cursor: pointer;"
+                                onclick="addNewLeg()">
                                 <i class="fa-solid fa-plus"></i> Add Leg
                             </button>
                         </div>
@@ -972,8 +1083,12 @@
                     </div>
 
                     <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 1rem;">
-                        <button type="button" class="btn-cyan" style="background: #94a3b8; color: #fff; padding: 10px 20px; font-weight: 600; border-radius: 6px;" onclick="switchView('timeBasedView')">CANCEL</button>
-                        <button type="submit" class="btn-cyan" style="padding: 10px 24px; font-weight: 700; border-radius: 6px;">SAVE STRATEGY TEMPLATE</button>
+                        <button type="button" class="btn-cyan"
+                            style="background: #94a3b8; color: #fff; padding: 10px 20px; font-weight: 600; border-radius: 6px;"
+                            onclick="switchView('timeBasedView')">CANCEL</button>
+                        <button type="submit" class="btn-cyan"
+                            style="padding: 10px 24px; font-weight: 700; border-radius: 6px;">SAVE STRATEGY
+                            TEMPLATE</button>
                     </div>
                 </form>
             </div>
@@ -987,7 +1102,8 @@
         <div class="modal-card">
             <div class="modal-card-header">
                 <div class="modal-card-title">ADD NEW TIME BASED STRATEGY</div>
-                <i class="fa-solid fa-xmark" onclick="closeAddStrategyModal()" style="cursor: pointer; font-size: 1.2rem;"></i>
+                <i class="fa-solid fa-xmark" onclick="closeAddStrategyModal()"
+                    style="cursor: pointer; font-size: 1.2rem;"></i>
             </div>
 
             <form id="newStratForm" onsubmit="handleSaveNewStrategy(event)">
@@ -1059,7 +1175,8 @@
                 </div>
 
                 <div style="margin-top: 1.5rem; display: flex; gap: 10px; justify-content: flex-end;">
-                    <button type="button" class="btn-cyan" style="background: #94a3b8;" onclick="closeAddStrategyModal()">CANCEL</button>
+                    <button type="button" class="btn-cyan" style="background: #94a3b8;"
+                        onclick="closeAddStrategyModal()">CANCEL</button>
                     <button type="submit" class="btn-cyan">SAVE STRATEGY</button>
                 </div>
             </form>
@@ -1075,7 +1192,7 @@
             updateClock();
             setInterval(updateClock, 1000);
             fetchMarketQuotes();
-            setInterval(fetchMarketQuotes, 1500);
+            setInterval(fetchMarketQuotes, 1000);
             updateExpiryDates('NIFTY');
 
             const loggedIn = await checkSessionStatus();
@@ -1092,24 +1209,35 @@
                 const res = await fetch('/api/market_quotes');
                 const data = await res.json();
                 if (data.success && data.quotes) {
-                    if (data.quotes.NIFTY) {
-                        const n = data.quotes.NIFTY;
-                        const el = document.getElementById('niftyTicker');
-                        if (el) {
-                            const ltpVal = typeof n.ltp === 'number' ? n.ltp.toFixed(2) : n.ltp;
-                            el.innerText = `NIFTY: ${ltpVal}`;
+                    const indexList = ['NIFTY', 'SENSEX'];
+                    indexList.forEach(sym => {
+                        const info = data.quotes[sym];
+                        const el = document.getElementById(sym.toLowerCase() + 'Ticker');
+                        if (el && info) {
+                            const ltpVal = typeof info.ltp === 'number' ? info.ltp.toFixed(2) : info.ltp;
+                            const rawChg = parseFloat(info.change || 0);
+                            const sign = rawChg >= 0 ? '+' : '';
+                            const chgStr = info.change !== undefined && info.change !== null ? ` (${sign}${rawChg.toFixed(2)})` : '';
+                            el.innerHTML = `${sym}: ${ltpVal}${chgStr}`;
                         }
-                    }
-                    if (data.quotes.SENSEX) {
-                        const s = data.quotes.SENSEX;
-                        const el = document.getElementById('sensexTicker');
-                        if (el) {
-                            const ltpVal = typeof s.ltp === 'number' ? s.ltp.toFixed(2) : s.ltp;
-                            el.innerText = `SENSEX: ${ltpVal}`;
-                        }
-                    }
+                    });
                 }
             } catch (e) { console.error('Market quotes fetch error:', e); }
+        }
+
+        async function subscribeIndexWebsocket() {
+            try {
+                const res = await fetch('/api/subscribe_index_websocket', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    addConsoleLog(data.message, 'SUCCESS');
+                    fetchMarketQuotes();
+                } else {
+                    addConsoleLog(data.error || 'Failed to subscribe to index WebSocket feed.', 'ERROR');
+                }
+            } catch (e) {
+                console.error('Subscribe index websocket error:', e);
+            }
         }
 
         function addConsoleLog(msg, type = 'INFO') {
@@ -1147,7 +1275,7 @@
 
             const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
             const now = new Date();
-            
+
             let targetDay = 4;
             const sym = (symbol || 'NIFTY').toUpperCase();
             if (sym.includes('FINNIFTY')) targetDay = 2;
@@ -1296,8 +1424,8 @@
                     allTbody.innerHTML = `<tr><td colspan="12" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No strategies created yet.</td></tr>`;
                 } else {
                     allTbody.innerHTML = data.all_strategies.map(s => {
-                        const statusBadge = s.status === 'RUNNING' || s.status === 'ACTIVE' 
-                            ? `<span class="badge-running">RUNNING</span>` 
+                        const statusBadge = s.status === 'RUNNING' || s.status === 'ACTIVE'
+                            ? `<span class="badge-running">RUNNING</span>`
                             : `<span class="badge-idle">${s.status}</span>`;
 
                         const totalLots = getStrategyTotalLots(s);
@@ -1545,7 +1673,7 @@
                             </select>
                         </div>
 
-                        <div class="form-group leg-strike-val-box" style="display: ${ (leg.strike_criteria === 'Closest Premium' || leg.strike_criteria === 'Strike Distance') ? 'block' : 'none' };">
+                        <div class="form-group leg-strike-val-box" style="display: ${(leg.strike_criteria === 'Closest Premium' || leg.strike_criteria === 'Strike Distance') ? 'block' : 'none'};">
                             <label style="color: #64748b; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; display: block;">STRIKE VALUE</label>
                             <input type="text" class="leg-input leg-strike-val" value="${leg.strike_value}" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 6px; padding: 8px 10px; width: 100%; font-size: 0.85rem;">
                         </div>
@@ -1706,7 +1834,7 @@
             e.preventDefault();
             syncLegsFromDOM();
             const scripIndex = document.getElementById('s_scrip_index')?.value || document.getElementById('s_symbol')?.value || 'NIFTY';
-            
+
             const rawEntry = (document.getElementById('s_entry_time')?.value || '09:20').trim().replace('.', ':');
             const rawExit = (document.getElementById('s_exit_time')?.value || '15:15').trim().replace('.', ':');
             const formattedEntry = formatTimeDisplay(rawEntry);
@@ -1715,7 +1843,7 @@
             const legs = strategyLegs || [];
             const calculatedLots = legs.length > 0 ? legs.reduce((sum, l) => sum + (parseInt(l.lots, 10) || 1), 0) : 1;
             const overallSl = parseFloat(document.getElementById('s_overall_sl')?.value || 0);
-            
+
             let calculatedSL = 'None';
             if (overallSl > 0) {
                 calculatedSL = `₹${overallSl}`;
@@ -1962,4 +2090,5 @@
         }
     </script>
 </body>
+
 </html>

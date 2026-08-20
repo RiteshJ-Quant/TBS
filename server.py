@@ -379,6 +379,16 @@ def login_broker():
                 "raw_response": validate_res
             }), 400
 
+        if isinstance(validate_res, dict) and "data" in validate_res:
+            d = validate_res["data"]
+            if isinstance(d, dict):
+                if d.get("token"):
+                    client.configuration.edit_token = d.get("token")
+                if d.get("sid"):
+                    client.configuration.edit_sid = d.get("sid")
+                if d.get("hsServerId"):
+                    client.configuration.serverId = d.get("hsServerId")
+
         SESSION["client"] = client
         SESSION["ucc"] = ucc
         SESSION["mobile_number"] = mobile_number
@@ -386,6 +396,33 @@ def login_broker():
         SESSION["logged_in"] = True
 
         threading.Thread(target=download_master_scrips_async, args=(client,), daemon=True).start()
+
+        def auto_subscribe_indices():
+            time.sleep(1)
+            try:
+                tokens_to_fetch = [
+                    {"token": "26000", "segment": "nse_cm", "symbol": "NIFTY", "is_index": True},
+                    {"token": "26009", "segment": "nse_cm", "symbol": "BANKNIFTY", "is_index": True},
+                    {"token": "26037", "segment": "nse_cm", "symbol": "FINNIFTY", "is_index": True},
+                    {"token": "26074", "segment": "nse_cm", "symbol": "MIDCPNIFTY", "is_index": True},
+                    {"token": "1", "segment": "bse_cm", "symbol": "SENSEX", "is_index": True},
+                    {"token": "12", "segment": "bse_cm", "symbol": "BANKEX", "is_index": True}
+                ]
+                setup_websocket_callbacks(client)
+                sub_tokens = [{"instrument_token": t["token"], "exchange_segment": t["segment"]} for t in tokens_to_fetch]
+                try:
+                    client.subscribe(instrument_tokens=sub_tokens, isIndex=True)
+                except Exception:
+                    for t in tokens_to_fetch:
+                        subscribe_token_once(client, t["token"], t["segment"], is_index=True)
+                with SUBSCRIBED_LOCK:
+                    for t in tokens_to_fetch:
+                        SUBSCRIBED_TOKENS.add(t["token"])
+                logging.info("[+] Automatically subscribed to all 6 index WebSockets on login.")
+            except Exception as ex:
+                logging.warning(f"[!] Auto index subscribe notice: {ex}")
+
+        threading.Thread(target=auto_subscribe_indices, daemon=True).start()
 
         return jsonify({
             "success": True,
@@ -880,33 +917,70 @@ def setup_websocket_callbacks(client):
 
     def on_websocket_message(message):
         try:
-            items = message if isinstance(message, list) else [message]
+            items = []
+            if isinstance(message, dict):
+                if "data" in message:
+                    d = message["data"]
+                    items = d if isinstance(d, list) else [d]
+                else:
+                    items = [message]
+            elif isinstance(message, list):
+                items = message
+
             for item in items:
                 if not isinstance(item, dict):
                     continue
-                data = item.get("data", item)
-                if isinstance(data, dict):
-                    tok = str(data.get("tk") or data.get("instrument_token") or data.get("token") or "")
-                    ltp = data.get("ltp") or data.get("last_traded_price") or data.get("iv") or data.get("ic")
-                    chg = data.get("change") or data.get("nc") or data.get("chg")
+                d = item.get("data", item) if isinstance(item, dict) else item
+                if isinstance(d, dict):
+                    tok = str(d.get("tk") or d.get("instrument_token") or d.get("token") or d.get("symbol") or d.get("name") or "")
+                    ltp = (
+                        d.get("ltp") or d.get("last_traded_price") or
+                        d.get("iv") or d.get("ic") or d.get("c") or d.get("close") or
+                        (d.get("v", {}).get("ltp") if isinstance(d.get("v"), dict) else None)
+                    )
+                    chg = d.get("change") or d.get("nc") or d.get("chg") or d.get("c")
                     if tok and ltp is not None:
-                        with LIVE_LTP_LOCK:
-                            LIVE_LTP_CACHE[tok] = {
-                                "ltp": float(ltp),
+                        try:
+                            ltp_val = float(ltp)
+                            item_cache = {
+                                "ltp": ltp_val,
                                 "change": str(chg) if chg is not None else "0.00",
                                 "updated_at": datetime.now().strftime("%H:%M:%S")
                             }
-                        logging.info(f"[WS LIVE TICK] Token {tok} -> LTP: ₹{ltp}")
+                            with LIVE_LTP_LOCK:
+                                LIVE_LTP_CACHE[tok] = item_cache
+                                tok_upper = tok.upper()
+                                if tok in ["26000", "NIFTY 50", "NIFTY"] or "NIFTY 50" in tok_upper:
+                                    LIVE_LTP_CACHE["NIFTY"] = item_cache
+                                    LIVE_LTP_CACHE["26000"] = item_cache
+                                elif tok in ["26009", "BANKNIFTY", "NIFTY BANK"]:
+                                    LIVE_LTP_CACHE["BANKNIFTY"] = item_cache
+                                    LIVE_LTP_CACHE["26009"] = item_cache
+                                elif tok in ["26037", "FINNIFTY"]:
+                                    LIVE_LTP_CACHE["FINNIFTY"] = item_cache
+                                    LIVE_LTP_CACHE["26037"] = item_cache
+                                elif tok in ["26074", "MIDCPNIFTY"]:
+                                    LIVE_LTP_CACHE["MIDCPNIFTY"] = item_cache
+                                    LIVE_LTP_CACHE["26074"] = item_cache
+                                elif tok in ["1", "SENSEX", "BSESENSEX"]:
+                                    LIVE_LTP_CACHE["SENSEX"] = item_cache
+                                    LIVE_LTP_CACHE["1"] = item_cache
+                                elif tok in ["12", "BANKEX"]:
+                                    LIVE_LTP_CACHE["BANKEX"] = item_cache
+                                    LIVE_LTP_CACHE["12"] = item_cache
+                            logging.info(f"[WS LIVE TICK] Index/Token '{tok}' -> LTP: ₹{ltp_val}")
+                        except (ValueError, TypeError):
+                            pass
         except Exception as ex:
             logging.warning(f"[WS ON_MESSAGE ERR]: {ex}")
 
     def on_websocket_error(error):
         logging.warning(f"[WS ERROR]: {error}")
 
-    def on_websocket_open(msg):
+    def on_websocket_open(msg=None):
         logging.info(f"[WS OPEN]: Connected to Neo WebSocket feed.")
 
-    def on_websocket_close(msg):
+    def on_websocket_close(msg=None):
         logging.info(f"[WS CLOSE]: Neo WebSocket session closed.")
 
     try:
@@ -914,6 +988,19 @@ def setup_websocket_callbacks(client):
         client.on_error = on_websocket_error
         client.on_open = on_websocket_open
         client.on_close = on_websocket_close
+
+        if hasattr(client, "set_neowebsocket_callbacks"):
+            try:
+                client.set_neowebsocket_callbacks()
+            except Exception:
+                pass
+
+        if getattr(client, "NeoWebSocket", None):
+            client.NeoWebSocket.on_message = on_websocket_message
+            client.NeoWebSocket.on_error = on_websocket_error
+            client.NeoWebSocket.on_open = on_websocket_open
+            client.NeoWebSocket.on_close = on_websocket_close
+
         client._ws_callbacks_set = True
         logging.info("[+] Successfully registered Neo WebSocket tick handlers on client instance.")
     except Exception as e:
@@ -933,12 +1020,50 @@ def subscribe_token_once(client, token, segment="nse_fo", is_index=False):
                     "exchange_segment": segment
                 }], isIndex=is_index)
                 SUBSCRIBED_TOKENS.add(token)
-                logging.info(f"[+] WebSockets: Subscribed to token {token} ({segment}, isIndex={is_index}) ONCE.")
+                logging.info(f"[+] WebSockets: Subscribed to token '{token}' ({segment}, isIndex={is_index}) ONCE.")
                 return True
             except Exception as e:
                 logging.warning(f"[!] WebSocket subscription notice for token {token}: {e}")
                 return False
     return False
+
+
+@app.route("/api/subscribe_index_websocket", methods=["POST"])
+def subscribe_index_websocket():
+    """Forces WebSocket subscription for index prices (NIFTY, BANKNIFTY, FINNIFTY, SENSEX)."""
+    client = SESSION.get("client")
+    if not SESSION.get("logged_in") or not client:
+        return jsonify({"success": False, "error": "Not authenticated with broker. Please log in first."}), 401
+
+    tokens_to_fetch = [
+        {"token": "26000", "segment": "nse_cm", "symbol": "NIFTY", "is_index": True},
+        {"token": "26009", "segment": "nse_cm", "symbol": "BANKNIFTY", "is_index": True},
+        {"token": "26037", "segment": "nse_cm", "symbol": "FINNIFTY", "is_index": True},
+        {"token": "26074", "segment": "nse_cm", "symbol": "MIDCPNIFTY", "is_index": True},
+        {"token": "1", "segment": "bse_cm", "symbol": "SENSEX", "is_index": True},
+        {"token": "12", "segment": "bse_cm", "symbol": "BANKEX", "is_index": True}
+    ]
+
+    with SUBSCRIBED_LOCK:
+        SUBSCRIBED_TOKENS.clear()
+
+    setup_websocket_callbacks(client)
+    subscribed = []
+
+    sub_tokens = [{"instrument_token": t["token"], "exchange_segment": t["segment"]} for t in tokens_to_fetch]
+    try:
+        client.subscribe(instrument_tokens=sub_tokens, isIndex=True)
+        for t in tokens_to_fetch:
+            SUBSCRIBED_TOKENS.add(t["token"])
+            subscribed.append(t["symbol"])
+    except Exception as ex:
+        logging.warning(f"Batch index subscribe notice: {ex}")
+
+    return jsonify({
+        "success": True,
+        "message": f"Subscribed WebSocket index feeds for: {', '.join(subscribed)}",
+        "subscribed": subscribed
+    })
 
 
 @app.route("/api/market_quotes", methods=["GET"])
@@ -948,10 +1073,12 @@ def get_market_quotes():
     Prioritizes real-time WebSocket ticks when active, with REST API / static fallback.
     """
     tokens_to_fetch = [
-        {"token": "26000", "segment": "nse_cm", "symbol": "NIFTY", "is_index": True},
-        {"token": "26009", "segment": "nse_cm", "symbol": "BANKNIFTY", "is_index": True},
-        {"token": "26037", "segment": "nse_cm", "symbol": "FINNIFTY", "is_index": True},
-        {"token": "1", "segment": "bse_cm", "symbol": "SENSEX", "is_index": True}
+        {"token": "26000", "symbol_name": "Nifty 50", "segment": "nse_cm", "symbol": "NIFTY", "is_index": True},
+        {"token": "26009", "symbol_name": "Nifty Bank", "segment": "nse_cm", "symbol": "BANKNIFTY", "is_index": True},
+        {"token": "26037", "symbol_name": "Nifty Fin Service", "segment": "nse_cm", "symbol": "FINNIFTY", "is_index": True},
+        {"token": "26074", "symbol_name": "Nifty Midcap 100", "segment": "nse_cm", "symbol": "MIDCPNIFTY", "is_index": True},
+        {"token": "1", "symbol_name": "SENSEX", "segment": "bse_cm", "symbol": "SENSEX", "is_index": True},
+        {"token": "12", "symbol_name": "BANKEX", "segment": "bse_cm", "symbol": "BANKEX", "is_index": True}
     ]
 
     quotes_data = {}
@@ -959,20 +1086,43 @@ def get_market_quotes():
     raw_response = None
 
     if SESSION.get("logged_in") and client:
-        # 1. Setup WebSocket callbacks and subscribe tokens for tick-by-tick updates
         setup_websocket_callbacks(client)
+        sub_tokens = []
         for t in tokens_to_fetch:
-            subscribe_token_once(client, t["token"], t["segment"], is_index=t.get("is_index", False))
+            sub_tokens.append({"instrument_token": t["token"], "exchange_segment": t["segment"]})
+            sub_tokens.append({"instrument_token": t["symbol_name"], "exchange_segment": t["segment"]})
 
-        # 2. Query REST API snapshot
         try:
-            req_payload = [{"instrument_token": str(t["token"]), "exchange_segment": t["segment"]} for t in tokens_to_fetch]
-            q_res = client.quotes(instrument_tokens=req_payload, quote_type="all")
-            if not q_res or (isinstance(q_res, dict) and q_res.get("status") == "error"):
-                q_res = client.quotes(instrument_tokens=req_payload, quote_type="ltp")
+            client.subscribe(instrument_tokens=sub_tokens, isIndex=True)
+        except Exception:
+            pass
+
+        # Try REST quotes using both symbol_name (e.g. 'Nifty 50') and token
+        try:
+            req_payload_names = [
+                {"instrument_token": t["symbol_name"], "exchange_segment": t["segment"]}
+                for t in tokens_to_fetch
+            ]
+            req_payload_tokens = [
+                {"instrument_token": t["token"], "exchange_segment": t["segment"]}
+                for t in tokens_to_fetch
+            ]
+
+            q_res = None
+            for payload in [req_payload_names, req_payload_tokens]:
+                try:
+                    res = client.quotes(instrument_tokens=payload, quote_type="ltp")
+                    if res and not (isinstance(res, dict) and res.get("status") == "error"):
+                        q_res = res
+                        break
+                    res_all = client.quotes(instrument_tokens=payload, quote_type="all")
+                    if res_all and not (isinstance(res_all, dict) and res_all.get("status") == "error"):
+                        q_res = res_all
+                        break
+                except Exception:
+                    pass
 
             raw_response = str(q_res)
-            logging.debug(f"[RAW QUOTES RESP]: {raw_response[:500]}")
 
             items = []
             if isinstance(q_res, list):
@@ -990,7 +1140,7 @@ def get_market_quotes():
             for q in items:
                 if not isinstance(q, dict):
                     continue
-                tok = str(q.get("instrument_token") or q.get("token") or q.get("tok") or q.get("instrumentToken", ""))
+                tok = str(q.get("instrument_token") or q.get("token") or q.get("tok") or q.get("instrumentToken") or q.get("symbol") or q.get("trading_symbol") or "")
                 v_dict = q.get("v") if isinstance(q.get("v"), dict) else {}
                 ltp = (
                     q.get("ltp") or q.get("last_traded_price") or q.get("close") or q.get("c") or q.get("lastPrice") or
@@ -999,39 +1149,70 @@ def get_market_quotes():
                 )
                 close_val = q.get("close") or q.get("c") or v_dict.get("close") or ltp
                 chg = q.get("change") or q.get("chg") or q.get("net_change") or v_dict.get("change") or "0.00"
-                if tok and ltp is not None:
+                if ltp is not None:
                     try:
-                        quotes_data[tok] = {
-                            "ltp": float(ltp),
+                        ltp_f = float(ltp)
+                        q_entry = {
+                            "ltp": ltp_f,
                             "close": float(close_val or ltp),
-                            "change": str(chg)
+                            "change": str(chg),
+                            "updated_at": datetime.now().strftime("%H:%M:%S")
                         }
+                        tok_u = tok.upper()
+                        with LIVE_LTP_LOCK:
+                            if tok in ["26000", "NIFTY"] or "NIFTY 50" in tok_u:
+                                quotes_data["NIFTY"] = q_entry
+                                LIVE_LTP_CACHE["NIFTY"] = q_entry
+                                LIVE_LTP_CACHE["26000"] = q_entry
+                            elif tok in ["26009", "BANKNIFTY"] or "NIFTY BANK" in tok_u or "BANK" in tok_u:
+                                quotes_data["BANKNIFTY"] = q_entry
+                                LIVE_LTP_CACHE["BANKNIFTY"] = q_entry
+                                LIVE_LTP_CACHE["26009"] = q_entry
+                            elif tok in ["26037", "FINNIFTY"] or "FIN SERVICE" in tok_u:
+                                quotes_data["FINNIFTY"] = q_entry
+                                LIVE_LTP_CACHE["FINNIFTY"] = q_entry
+                                LIVE_LTP_CACHE["26037"] = q_entry
+                            elif tok in ["26074", "MIDCPNIFTY"] or "MIDCAP" in tok_u:
+                                quotes_data["MIDCPNIFTY"] = q_entry
+                                LIVE_LTP_CACHE["MIDCPNIFTY"] = q_entry
+                                LIVE_LTP_CACHE["26074"] = q_entry
+                            elif tok in ["1", "SENSEX"] or "SENSEX" in tok_u:
+                                quotes_data["SENSEX"] = q_entry
+                                LIVE_LTP_CACHE["SENSEX"] = q_entry
+                                LIVE_LTP_CACHE["1"] = q_entry
+                            elif tok in ["12", "BANKEX"] or "BANKEX" in tok_u:
+                                quotes_data["BANKEX"] = q_entry
+                                LIVE_LTP_CACHE["BANKEX"] = q_entry
+                                LIVE_LTP_CACHE["12"] = q_entry
                     except Exception as parse_ex:
                         logging.warning(f"Error parsing quote for token {tok}: {parse_ex}")
 
         except Exception as e:
             logging.warning(f"[!] Quotes REST fetch notice: {e}")
 
-    # Fallback defaults for off-market display if disconnected
-    defaults = {
-        "26000": {"symbol": "NIFTY", "ltp": 24383.60, "change": "+38.60"},
-        "26009": {"symbol": "BANKNIFTY", "ltp": 51850.20, "change": "+150.20"},
-        "26037": {"symbol": "FINNIFTY", "ltp": 22410.50, "change": "+20.50"},
-        "1": {"symbol": "SENSEX", "ltp": 78094.64, "change": "+144.64"}
-    }
-
     final_quotes = {}
     with LIVE_LTP_LOCK:
-        for t in tokens_to_fetch:
-            tok = t["token"]
-            sym = t["symbol"]
-            # Prioritize real-time WebSocket tick if received
-            if tok in LIVE_LTP_CACHE:
-                final_quotes[sym] = LIVE_LTP_CACHE[tok]
-            elif tok in quotes_data:
-                final_quotes[sym] = quotes_data[tok]
+        for sym in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"]:
+            if sym in LIVE_LTP_CACHE:
+                final_quotes[sym] = LIVE_LTP_CACHE[sym]
+            elif "26000" in LIVE_LTP_CACHE and sym == "NIFTY":
+                final_quotes[sym] = LIVE_LTP_CACHE["26000"]
+            elif "26009" in LIVE_LTP_CACHE and sym == "BANKNIFTY":
+                final_quotes[sym] = LIVE_LTP_CACHE["26009"]
+            elif "1" in LIVE_LTP_CACHE and sym == "SENSEX":
+                final_quotes[sym] = LIVE_LTP_CACHE["1"]
+            elif sym in quotes_data:
+                final_quotes[sym] = quotes_data[sym]
             else:
-                final_quotes[sym] = defaults[tok]
+                defaults = {
+                    "NIFTY": {"ltp": 24383.60, "change": "+38.60"},
+                    "BANKNIFTY": {"ltp": 51850.20, "change": "+150.20"},
+                    "FINNIFTY": {"ltp": 22410.50, "change": "+20.50"},
+                    "MIDCPNIFTY": {"ltp": 12890.30, "change": "+45.10"},
+                    "SENSEX": {"ltp": 78094.64, "change": "+144.64"},
+                    "BANKEX": {"ltp": 58920.10, "change": "+110.40"}
+                }
+                final_quotes[sym] = defaults.get(sym, {"ltp": 0.0, "change": "0.00"})
 
     return jsonify({
         "success": True,
