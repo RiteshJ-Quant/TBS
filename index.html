@@ -1235,6 +1235,51 @@
         let cachedStrategies = [];
         let currentEditingStrategyId = null;
 
+        function formatTimeDisplay(tStr) {
+            if (!tStr) return '09:20';
+            let s = String(tStr).trim().replace('.', ':');
+            const parts = s.split(':');
+            if (parts.length >= 2) {
+                let h = parts[0].padStart(2, '0');
+                let m = parts[1].padStart(2, '0');
+                return `${h}:${m}`;
+            }
+            return s;
+        }
+
+        function getStrategySLDisplay(s) {
+            if (s.overall_sl && parseFloat(s.overall_sl) > 0) {
+                return `₹${parseFloat(s.overall_sl).toLocaleString('en-IN')}`;
+            }
+            if (s.legs && s.legs.length > 0) {
+                const slLeg = s.legs.find(l => l.stop_loss && l.stop_loss.enabled && l.stop_loss.val > 0);
+                if (slLeg) {
+                    return `${slLeg.stop_loss.val} ${slLeg.stop_loss.type || 'Pts'}`;
+                }
+            }
+            return s.sl || 'None';
+        }
+
+        function getStrategyStrikeDisplay(s) {
+            if (s.legs && s.legs.length > 0) {
+                return s.legs.map(l => {
+                    const pos = l.position || 'Sell';
+                    const type = l.option_type || 'Call';
+                    const crit = l.strike_criteria || 'ATM';
+                    const val = (crit === 'Closest Premium' || crit === 'Strike Distance') && l.strike_value ? ` (${l.strike_value})` : '';
+                    return `${pos} ${type} ${crit}${val}`;
+                }).join(' | ');
+            }
+            return s.strike_selection || 'ATM';
+        }
+
+        function getStrategyTotalLots(s) {
+            if (s.legs && s.legs.length > 0) {
+                return s.legs.reduce((sum, l) => sum + (parseInt(l.lots, 10) || 1), 0);
+            }
+            return s.lots || 1;
+        }
+
         async function fetchStrategies() {
             try {
                 const res = await fetch('/api/strategies');
@@ -1255,18 +1300,28 @@
                             ? `<span class="badge-running">RUNNING</span>` 
                             : `<span class="badge-idle">${s.status}</span>`;
 
+                        const totalLots = getStrategyTotalLots(s);
+                        const legCount = s.legs ? s.legs.length : 1;
+                        const formattedEntry = formatTimeDisplay(s.entry_time);
+                        const formattedExit = formatTimeDisplay(s.exit_time);
+                        const slText = getStrategySLDisplay(s);
+                        const strikeText = getStrategyStrikeDisplay(s);
+
                         return `
                             <tr>
-                                <td style="font-weight: 700;">${s.symbol}</td>
-                                <td>${s.broker}</td>
-                                <td>${s.lots}</td>
-                                <td>${s.batches}</td>
-                                <td style="font-family: 'JetBrains Mono'; font-weight: 600;">${s.entry_time}</td>
-                                <td>${s.entry_interval}</td>
-                                <td style="font-family: 'JetBrains Mono'; font-weight: 600;">${s.exit_time}</td>
-                                <td>${s.exit_interval}</td>
-                                <td>${s.sl}</td>
-                                <td>${s.strike_selection}</td>
+                                <td style="font-weight: 700;">
+                                    ${s.symbol}
+                                    ${s.name ? `<div style="font-size: 0.72rem; color: #0284c7; font-weight: 600;">${s.name}</div>` : ''}
+                                </td>
+                                <td>${s.broker || 'Kotak Neo'}</td>
+                                <td>${totalLots} <span style="font-size: 0.72rem; color: #64748b;">(${legCount} Leg${legCount > 1 ? 's' : ''})</span></td>
+                                <td>${s.batches || 1}</td>
+                                <td style="font-family: 'JetBrains Mono'; font-weight: 600;">${formattedEntry}</td>
+                                <td>${s.entry_interval || s.delay_entry || 0}</td>
+                                <td style="font-family: 'JetBrains Mono'; font-weight: 600;">${formattedExit}</td>
+                                <td>${s.exit_interval || 0}</td>
+                                <td style="font-weight: 600; color: #ef4444;">${slText}</td>
+                                <td style="font-weight: 500;">${strikeText}</td>
                                 <td>${statusBadge}</td>
                                 <td>
                                     <button class="action-icon-btn play" onclick="toggleStrategy('${s.id}')" title="Start/Pause">
@@ -1287,26 +1342,35 @@
                 if (data.active_strategies.length === 0) {
                     activeTbody.innerHTML = `<tr><td colspan="12" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No active strategies.</td></tr>`;
                 } else {
-                    activeTbody.innerHTML = data.active_strategies.map(s => `
-                        <tr>
-                            <td style="font-weight: 700;">${s.symbol}</td>
-                            <td>${s.broker}</td>
-                            <td>${s.lots}</td>
-                            <td>${s.batches}</td>
-                            <td style="font-family: 'JetBrains Mono';">${s.entry_time}</td>
-                            <td>${s.entry_interval}</td>
-                            <td style="font-family: 'JetBrains Mono';">${s.exit_time}</td>
-                            <td>${s.exit_interval}</td>
-                            <td>${s.sl}</td>
-                            <td>${s.strike_selection}</td>
-                            <td><span class="badge-running">RUNNING</span></td>
-                            <td style="font-weight: 700; color: var(--accent-green);">${s.pnl || '₹0.00'}</td>
-                        </tr>
-                    `).join('');
+                    activeTbody.innerHTML = data.active_strategies.map(s => {
+                        const totalLots = getStrategyTotalLots(s);
+                        const formattedEntry = formatTimeDisplay(s.entry_time);
+                        const formattedExit = formatTimeDisplay(s.exit_time);
+                        const slText = getStrategySLDisplay(s);
+                        const strikeText = getStrategyStrikeDisplay(s);
+
+                        return `
+                            <tr>
+                                <td style="font-weight: 700;">${s.symbol} ${s.name ? `(${s.name})` : ''}</td>
+                                <td>${s.broker || 'Kotak Neo'}</td>
+                                <td>${totalLots}</td>
+                                <td>${s.batches || 1}</td>
+                                <td style="font-family: 'JetBrains Mono';">${formattedEntry}</td>
+                                <td>${s.entry_interval || s.delay_entry || 0}</td>
+                                <td style="font-family: 'JetBrains Mono';">${formattedExit}</td>
+                                <td>${s.exit_interval || 0}</td>
+                                <td>${slText}</td>
+                                <td>${strikeText}</td>
+                                <td><span class="badge-running">RUNNING</span></td>
+                                <td style="font-weight: 700; color: var(--accent-green);">${s.pnl || '₹0.00'}</td>
+                            </tr>
+                        `;
+                    }).join('');
                 }
 
             } catch (e) { console.error(e); }
         }
+
 
         let strategyLegs = [];
 
@@ -1642,14 +1706,45 @@
             e.preventDefault();
             syncLegsFromDOM();
             const scripIndex = document.getElementById('s_scrip_index')?.value || document.getElementById('s_symbol')?.value || 'NIFTY';
+            
+            const rawEntry = (document.getElementById('s_entry_time')?.value || '09:20').trim().replace('.', ':');
+            const rawExit = (document.getElementById('s_exit_time')?.value || '15:15').trim().replace('.', ':');
+            const formattedEntry = formatTimeDisplay(rawEntry);
+            const formattedExit = formatTimeDisplay(rawExit);
+
+            const legs = strategyLegs || [];
+            const calculatedLots = legs.length > 0 ? legs.reduce((sum, l) => sum + (parseInt(l.lots, 10) || 1), 0) : 1;
+            const overallSl = parseFloat(document.getElementById('s_overall_sl')?.value || 0);
+            
+            let calculatedSL = 'None';
+            if (overallSl > 0) {
+                calculatedSL = `₹${overallSl}`;
+            } else if (legs.length > 0) {
+                const slLeg = legs.find(l => l.stop_loss && l.stop_loss.enabled && l.stop_loss.val > 0);
+                if (slLeg) {
+                    calculatedSL = `${slLeg.stop_loss.val} ${slLeg.stop_loss.type || 'Pts'}`;
+                }
+            }
+
+            let calculatedStrike = 'ATM';
+            if (legs.length > 0) {
+                calculatedStrike = legs.map(l => {
+                    const pos = l.position || 'Sell';
+                    const type = l.option_type || 'Call';
+                    const crit = l.strike_criteria || 'ATM';
+                    const val = (crit === 'Closest Premium' || crit === 'Strike Distance') && l.strike_value ? ` (${l.strike_value})` : '';
+                    return `${pos} ${type} ${crit}${val}`;
+                }).join(' | ');
+            }
+
             const payload = {
                 id: currentEditingStrategyId,
                 name: document.getElementById('s_strategy_name')?.value || 'TBS Strategy',
                 symbol: scripIndex,
                 scrip_index: scripIndex,
                 expiry: document.getElementById('s_strategy_expiry')?.value || 'Weekly',
-                entry_time: document.getElementById('s_entry_time')?.value || '09:20',
-                exit_time: document.getElementById('s_exit_time')?.value || '15:15',
+                entry_time: formattedEntry,
+                exit_time: formattedExit,
                 product_code: document.getElementById('s_product_code')?.value || 'NRML (Normal Carrying)',
                 underlying_source: document.getElementById('s_underlying_source')?.value || 'Cash (Spot Index LTP)',
                 square_off_type: document.getElementById('s_square_off_type')?.value || 'Partial (Square off hit leg only)',
@@ -1657,19 +1752,20 @@
                 target_sl_ref: document.getElementById('s_target_sl_ref')?.value || 'Traded Price',
                 delay_entry: parseInt(document.getElementById('s_delay_entry')?.value || 0, 10),
                 overall_target: parseFloat(document.getElementById('s_overall_target')?.value || 0),
-                overall_sl: parseFloat(document.getElementById('s_overall_sl')?.value || 0),
+                overall_sl: overallSl,
                 overall_reentry: document.getElementById('s_overall_reentry')?.value || 'None',
                 enable_trailing_sl: document.getElementById('s_enable_trailing_sl')?.checked || false,
-                broker: document.getElementById('s_broker')?.value || 'Kotak Neo',
-                lots: document.getElementById('s_lots')?.value || 1,
-                batches: document.getElementById('s_batches')?.value || 1,
-                entry_interval: document.getElementById('s_entry_interval')?.value || '0',
-                exit_interval: document.getElementById('s_exit_interval')?.value || '0',
-                sl: document.getElementById('s_sl')?.value || '2 Pts',
-                strike_selection: document.getElementById('s_strike')?.value || 'Premium closest to 3',
+                broker: 'Kotak Neo',
+                lots: calculatedLots,
+                batches: 1,
+                entry_interval: String(document.getElementById('s_delay_entry')?.value || 0),
+                exit_interval: '0',
+                sl: calculatedSL,
+                strike_selection: calculatedStrike,
                 legs: strategyLegs,
                 trade_mode: currentTradeMode
             };
+
 
             const endpoint = currentEditingStrategyId ? '/api/strategies/update' : '/api/strategies/add';
 
