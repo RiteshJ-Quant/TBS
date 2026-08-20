@@ -44,6 +44,13 @@ try:
 except ImportError:
     pyotp = None
 
+try:
+    from neo_websocket import download_all_master_scrips, MASTER_SCRIP_DIR, ALL_EXCHANGE_SEGMENTS
+except ImportError:
+    download_all_master_scrips = None
+    MASTER_SCRIP_DIR = os.path.join(BASE_DIR, "master_scrips")
+    ALL_EXCHANGE_SEGMENTS = ["bse_cm", "bse_fo", "cde_fo", "mcx_fo", "nse_cm", "nse_com", "nse_fo"]
+
 app = Flask(__name__, static_folder=BASE_DIR, static_url_path="")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -304,6 +311,17 @@ def get_session_status():
     })
 
 
+def download_master_scrips_async(client):
+    """Asynchronously downloads all 7 master scrip CSV files in background after login."""
+    if download_all_master_scrips and client:
+        logging.info("[*] Background thread starting download of all Kotak Neo master scrip files...")
+        try:
+            res = download_all_master_scrips(client, force_download=False)
+            logging.info(f"[+] Master scrips background download finished.")
+        except Exception as e:
+            logging.error(f"[!] Background master scrip download error: {e}")
+
+
 @app.route("/api/login", methods=["POST"])
 def login_broker():
     """Kotak Neo API v2 Broker 2FA Authentication Flow."""
@@ -385,6 +403,57 @@ def logout_broker():
     SESSION["ucc"] = None
     SESSION["logged_in"] = False
     return jsonify({"success": True, "message": "Logged out successfully."})
+
+
+@app.route("/api/download_master_scrips", methods=["POST"])
+def download_master_scrips_endpoint():
+    """Trigger downloading of all 7 master scrip CSV files via Kotak Neo API."""
+    if not SESSION["logged_in"] or not SESSION["client"]:
+        return jsonify({"success": False, "error": "Not authenticated with broker. Please log in first."}), 401
+    
+    try:
+        data = request.json or {}
+        force = data.get("force", True)
+        results = download_all_master_scrips(SESSION["client"], force_download=force)
+        return jsonify({
+            "success": True,
+            "message": "Downloaded all master scrip CSV files.",
+            "results": results
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/master_scrips_status", methods=["GET"])
+def get_master_scrips_status():
+    """Returns status and details of downloaded master scrip CSV files."""
+    os.makedirs(MASTER_SCRIP_DIR, exist_ok=True)
+    status = {}
+    for seg in ALL_EXCHANGE_SEGMENTS:
+        fpath = os.path.join(MASTER_SCRIP_DIR, f"{seg}.csv")
+        
+        if os.path.exists(fpath):
+            size_mb = round(os.path.getsize(fpath) / (1024 * 1024), 2)
+            mtime = datetime.fromtimestamp(os.path.getmtime(fpath)).strftime("%Y-%m-%d %H:%M:%S")
+            status[seg] = {
+                "exists": True,
+                "file": f"{seg}.csv",
+                "size_mb": size_mb,
+                "last_updated": mtime
+            }
+        else:
+            status[seg] = {
+                "exists": False,
+                "file": f"{seg}.csv",
+                "size_mb": 0,
+                "last_updated": None
+            }
+    
+    return jsonify({
+        "success": True,
+        "master_scrips_dir": MASTER_SCRIP_DIR,
+        "status": status
+    })
 
 
 @app.route("/api/place_order", methods=["POST"])
@@ -724,7 +793,7 @@ def get_master_scrip_expiries(symbol="NIFTY"):
     symbol_str = symbol.strip().upper()
     segment = "bse_fo" if symbol_str in ["SENSEX", "BSESENSEX", "BANKEX"] else "nse_fo"
 
-    csv_file = os.path.join(BASE_DIR, "master_scrips", f"masterscrip_{segment}.csv")
+    csv_file = os.path.join(BASE_DIR, "master_scrips", f"{segment}.csv")
 
     if not os.path.exists(csv_file) and SESSION.get("logged_in") and SESSION.get("client"):
         try:
@@ -734,7 +803,7 @@ def get_master_scrip_expiries(symbol="NIFTY"):
             logging.warning(f"[!] Notice downloading {segment} master scrip: {e}")
 
     if not os.path.exists(csv_file):
-        csv_file = os.path.join(BASE_DIR, "master_scrips", "masterscrip_nse_fo.csv")
+        csv_file = os.path.join(BASE_DIR, "master_scrips", "nse_fo.csv")
 
     if not os.path.exists(csv_file):
         return get_calculated_expiries(symbol_str)

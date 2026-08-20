@@ -25,6 +25,132 @@ if os.path.exists(sdk_path) and sdk_path not in sys.path:
 from Login import login_kotak_neo
 
 MASTER_SCRIP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "master_scrips")
+ALL_EXCHANGE_SEGMENTS = ["bse_cm", "bse_fo", "cde_fo", "mcx_fo", "nse_cm", "nse_com", "nse_fo"]
+
+
+def download_all_master_scrips(client=None, force_download=False):
+    """
+    Downloads and caches ALL 7 Master Scrip CSV files provided by Kotak Neo API:
+    - bse_cm.csv (BSE Cash)
+    - bse_fo.csv (BSE F&O)
+    - cde_fo.csv (Currency F&O)
+    - mcx_fo.csv (MCX Commodity F&O)
+    - nse_cm.csv (NSE Cash)
+    - nse_com.csv (NSE Commodities)
+    - nse_fo.csv (NSE F&O)
+
+    Saves each file in 'master_scrips/' as both:
+    1. '{segment}.csv' (e.g. bse_cm.csv)
+    2. 'masterscrip_{segment}.csv' (e.g. masterscrip_bse_cm.csv)
+    """
+    os.makedirs(MASTER_SCRIP_DIR, exist_ok=True)
+    results = {}
+
+    url_map = {}
+    if client:
+        print("\n[*] Querying Kotak Neo API for Master Scrip file URLs...")
+        try:
+            master_res = client.scrip_master()
+            if isinstance(master_res, dict) and "filesPaths" in master_res:
+                for path in master_res.get("filesPaths", []):
+                    path_lower = path.lower()
+                    for seg in ALL_EXCHANGE_SEGMENTS:
+                        if f"/{seg}.csv" in path_lower or f"_{seg}.csv" in path_lower or seg in path_lower:
+                            url_map[seg] = path
+                print(f"[+] Found URL mappings from API: {list(url_map.keys())}")
+        except Exception as e:
+            print(f"[!] Exception querying client.scrip_master(): {e}")
+
+    today = datetime.today().date()
+    dates_to_try = [today - pd.Timedelta(days=i) for i in range(5)]
+
+    for seg in ALL_EXCHANGE_SEGMENTS:
+        file1 = os.path.join(MASTER_SCRIP_DIR, f"{seg}.csv")
+
+        # Check if already cached and recent
+        if os.path.exists(file1) and not force_download:
+            file_age_hours = (time.time() - os.path.getmtime(file1)) / 3600
+            if file_age_hours < 24:
+                size_mb = os.path.getsize(file1) / (1024 * 1024)
+                print(f"[+] Using cached '{seg}.csv' ({size_mb:.2f} MB, {file_age_hours:.1f} hrs old)")
+                results[seg] = {
+                    "success": True,
+                    "filename": f"{seg}.csv",
+                    "file_path": file1,
+                    "size_mb": round(size_mb, 2),
+                    "cached": True
+                }
+                continue
+
+        csv_url = url_map.get(seg)
+        if not csv_url and client:
+            print(f"[*] Fetching specific URL for '{seg}' via client.scrip_master('{seg}')...")
+            try:
+                seg_res = client.scrip_master(exchange_segment=seg)
+                if isinstance(seg_res, str) and seg_res.startswith("http"):
+                    csv_url = seg_res
+                elif isinstance(seg_res, dict) and "filesPaths" in seg_res:
+                    for p in seg_res.get("filesPaths", []):
+                        if seg.lower() in p.lower():
+                            csv_url = p
+                            break
+            except Exception as ex:
+                print(f"[!] Error fetching URL for '{seg}': {ex}")
+
+        # Fallback to Kotak CDN date-based URLs
+        if not csv_url:
+            for dt in dates_to_try:
+                date_str = dt.strftime("%Y-%m-%d")
+                cdn_url = f"https://lapi.kotaksecurities.com/wso2-scripmaster/v1/prod/{date_str}/transformed/{seg}.csv"
+                try:
+                    head_res = requests.head(cdn_url, timeout=5)
+                    if head_res.status_code == 200:
+                        csv_url = cdn_url
+                        break
+                except Exception:
+                    pass
+
+        if not csv_url:
+            print(f"[!] Could not obtain download URL for segment '{seg}'")
+            if os.path.exists(file1):
+                size_mb = os.path.getsize(file1) / (1024 * 1024)
+                results[seg] = {
+                    "success": True,
+                    "filename": f"{seg}.csv",
+                    "file_path": file1,
+                    "size_mb": round(size_mb, 2),
+                    "cached": True,
+                    "fallback": True
+                }
+            else:
+                results[seg] = {"success": False, "error": "No URL found"}
+            continue
+
+        print(f"[*] Downloading {seg}.csv from: {csv_url}")
+        try:
+            resp = requests.get(csv_url, timeout=60)
+            resp.raise_for_status()
+
+            with open(file1, "wb") as f:
+                f.write(resp.content)
+
+            size_mb = len(resp.content) / (1024 * 1024)
+            line_count = resp.content.count(b"\n")
+            print(f"[OK] Successfully downloaded {seg}.csv ({size_mb:.2f} MB, {line_count:,} lines)")
+
+            results[seg] = {
+                "success": True,
+                "filename": f"{seg}.csv",
+                "file_path": file1,
+                "size_mb": round(size_mb, 2),
+                "rows": line_count,
+                "cached": False
+            }
+        except Exception as ex:
+            print(f"[!] Exception downloading {seg}.csv: {ex}")
+            results[seg] = {"success": False, "error": str(ex)}
+
+    return results
 
 
 def download_and_load_master_scrip(client, exchange_segment="nse_fo", force_download=False):
@@ -32,7 +158,12 @@ def download_and_load_master_scrip(client, exchange_segment="nse_fo", force_down
     Downloads and caches the Master Scrip CSV file provided by Kotak Neo API.
     """
     os.makedirs(MASTER_SCRIP_DIR, exist_ok=True)
-    csv_file_path = os.path.join(MASTER_SCRIP_DIR, f"masterscrip_{exchange_segment}.csv")
+    
+    if exchange_segment.lower() == "all":
+        results = download_all_master_scrips(client, force_download=force_download)
+        exchange_segment = "nse_fo"
+
+    csv_file_path = os.path.join(MASTER_SCRIP_DIR, f"{exchange_segment}.csv")
 
     # Use cached CSV if available and not forced
     if os.path.exists(csv_file_path) and not force_download:
@@ -43,39 +174,15 @@ def download_and_load_master_scrip(client, exchange_segment="nse_fo", force_down
             df = df.rename(columns=lambda x: x.strip())
             return df
 
-    print(f"[*] Downloading Master Scrip file for segment '{exchange_segment}' from Kotak Neo API...")
-    res = client.scrip_master(exchange_segment=exchange_segment)
+    # Download all or target segment if not cached
+    download_all_master_scrips(client, force_download=force_download)
+    
+    if os.path.exists(csv_file_path):
+        df = pd.read_csv(csv_file_path)
+        df = df.rename(columns=lambda x: x.strip())
+        return df
 
-    csv_url = None
-    if isinstance(res, str) and res.startswith("http"):
-        csv_url = res
-    elif isinstance(res, dict) and "filesPaths" in res:
-        for path in res.get("filesPaths", []):
-            if exchange_segment.lower() in path.lower():
-                csv_url = path
-                break
-
-    if not csv_url:
-        print(f"[!] Could not extract direct URL from scrip_master response: {res}")
-        if os.path.exists(csv_file_path):
-            print("[+] Falling back to existing cached master file...")
-            df = pd.read_csv(csv_file_path)
-            df = df.rename(columns=lambda x: x.strip())
-            return df
-        raise ValueError(f"Failed to fetch Master Scrip URL for {exchange_segment}")
-
-    print(f"[+] Downloading master CSV from: {csv_url}")
-    response = requests.get(csv_url)
-    response.raise_for_status()
-
-    # Save to local cache
-    with open(csv_file_path, "wb") as f:
-        f.write(response.content)
-    print(f"[+] Saved master scrip CSV to: {csv_file_path}")
-
-    df = pd.read_csv(csv_file_path)
-    df = df.rename(columns=lambda x: x.strip())
-    return df
+    raise ValueError(f"Failed to fetch Master Scrip file for {exchange_segment}")
 
 
 def get_current_month_nifty_future(df):
@@ -215,8 +322,10 @@ def main():
         print("[!] Authentication failed. Cannot proceed.")
         return
 
-    # Step 2: Download Master Scrip & Find Nifty Current Month Future
+    # Step 2: Download ALL Master Scrip files & Find Nifty Current Month Future
     try:
+        print("[*] Downloading all complete Kotak Neo Master Scrip CSV files...")
+        download_all_master_scrips(client, force_download=False)
         df_master = download_and_load_master_scrip(client, exchange_segment="nse_fo")
         nifty_info = get_current_month_nifty_future(df_master)
     except Exception as e:
