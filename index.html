@@ -1075,7 +1075,7 @@
             updateClock();
             setInterval(updateClock, 1000);
             fetchMarketQuotes();
-            setInterval(fetchMarketQuotes, 10000);
+            setInterval(fetchMarketQuotes, 1500);
             updateExpiryDates('NIFTY');
 
             const loggedIn = await checkSessionStatus();
@@ -1094,13 +1094,20 @@
                 if (data.success && data.quotes) {
                     if (data.quotes.NIFTY) {
                         const n = data.quotes.NIFTY;
-                        document.getElementById('niftyTicker').innerText = `NIFTY: ${typeof n.ltp === 'number' ? n.ltp.toFixed(2) : n.ltp}`;
+                        const el = document.getElementById('niftyTicker');
+                        if (el) {
+                            const ltpVal = typeof n.ltp === 'number' ? n.ltp.toFixed(2) : n.ltp;
+                            el.innerText = `NIFTY: ${ltpVal}`;
+                        }
                     }
                     if (data.quotes.SENSEX) {
                         const s = data.quotes.SENSEX;
-                        document.getElementById('sensexTicker').innerText = `SENSEX: ${typeof s.ltp === 'number' ? s.ltp.toFixed(2) : s.ltp}`;
+                        const el = document.getElementById('sensexTicker');
+                        if (el) {
+                            const ltpVal = typeof s.ltp === 'number' ? s.ltp.toFixed(2) : s.ltp;
+                            el.innerText = `SENSEX: ${ltpVal}`;
+                        }
                     }
-                    addConsoleLog(`HTTP REST Quote: NIFTY = ${data.quotes.NIFTY?.ltp}, SENSEX = ${data.quotes.SENSEX?.ltp} (Source: Kotak Neo API v2)`, 'REST API');
                 }
             } catch (e) { console.error('Market quotes fetch error:', e); }
         }

@@ -26,6 +26,8 @@ from flask import Flask, request, jsonify, send_from_directory
 
 SUBSCRIBED_TOKENS = set()
 SUBSCRIBED_LOCK = threading.Lock()
+LIVE_LTP_CACHE = {}
+LIVE_LTP_LOCK = threading.Lock()
 
 # Ensure local SDK 'Kotak-neo-api-v2' is accessible in sys.path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -871,19 +873,67 @@ def get_master_scrip_expiries(symbol="NIFTY"):
         return get_calculated_expiries(symbol_str)
 
 
-def subscribe_token_once(client, token, segment="nse_fo"):
+def setup_websocket_callbacks(client):
+    """Attaches Neo WebSocket tick event handlers to client to update LIVE_LTP_CACHE."""
+    if not client or getattr(client, "_ws_callbacks_set", False):
+        return
+
+    def on_websocket_message(message):
+        try:
+            items = message if isinstance(message, list) else [message]
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                data = item.get("data", item)
+                if isinstance(data, dict):
+                    tok = str(data.get("tk") or data.get("instrument_token") or data.get("token") or "")
+                    ltp = data.get("ltp") or data.get("last_traded_price") or data.get("iv") or data.get("ic")
+                    chg = data.get("change") or data.get("nc") or data.get("chg")
+                    if tok and ltp is not None:
+                        with LIVE_LTP_LOCK:
+                            LIVE_LTP_CACHE[tok] = {
+                                "ltp": float(ltp),
+                                "change": str(chg) if chg is not None else "0.00",
+                                "updated_at": datetime.now().strftime("%H:%M:%S")
+                            }
+                        logging.info(f"[WS LIVE TICK] Token {tok} -> LTP: ₹{ltp}")
+        except Exception as ex:
+            logging.warning(f"[WS ON_MESSAGE ERR]: {ex}")
+
+    def on_websocket_error(error):
+        logging.warning(f"[WS ERROR]: {error}")
+
+    def on_websocket_open(msg):
+        logging.info(f"[WS OPEN]: Connected to Neo WebSocket feed.")
+
+    def on_websocket_close(msg):
+        logging.info(f"[WS CLOSE]: Neo WebSocket session closed.")
+
+    try:
+        client.on_message = on_websocket_message
+        client.on_error = on_websocket_error
+        client.on_open = on_websocket_open
+        client.on_close = on_websocket_close
+        client._ws_callbacks_set = True
+        logging.info("[+] Successfully registered Neo WebSocket tick handlers on client instance.")
+    except Exception as e:
+        logging.warning(f"[!] Error setting WS callbacks: {e}")
+
+
+def subscribe_token_once(client, token, segment="nse_fo", is_index=False):
     """Subscribes an instrument token to WebSocket ONCE only."""
     with SUBSCRIBED_LOCK:
         if token in SUBSCRIBED_TOKENS:
             return True
         if client and hasattr(client, "subscribe"):
             try:
+                setup_websocket_callbacks(client)
                 client.subscribe(instrument_tokens=[{
                     "instrument_token": str(token),
                     "exchange_segment": segment
-                }])
+                }], isIndex=is_index)
                 SUBSCRIBED_TOKENS.add(token)
-                logging.info(f"[+] WebSockets: Subscribed to token {token} ({segment}) ONCE.")
+                logging.info(f"[+] WebSockets: Subscribed to token {token} ({segment}, isIndex={is_index}) ONCE.")
                 return True
             except Exception as e:
                 logging.warning(f"[!] WebSocket subscription notice for token {token}: {e}")
@@ -894,64 +944,73 @@ def subscribe_token_once(client, token, segment="nse_fo"):
 @app.route("/api/market_quotes", methods=["GET"])
 def get_market_quotes():
     """
-    Fetches snapshot LTP & quote details via Kotak Neo REST API HTTP request.
-    Guaranteed to return quotes even when the market is closed / off-hours.
-    Also subscribes to WebSocket stream ONCE per token.
+    Fetches snapshot LTP & quote details via Kotak Neo REST API / Neo WebSocket ticks.
+    Prioritizes real-time WebSocket ticks when active, with REST API / static fallback.
     """
     tokens_to_fetch = [
-        {"token": "26000", "segment": "nse_cm", "symbol": "NIFTY"},
-        {"token": "26009", "segment": "nse_cm", "symbol": "BANKNIFTY"},
-        {"token": "26037", "segment": "nse_cm", "symbol": "FINNIFTY"},
-        {"token": "1", "segment": "bse_cm", "symbol": "SENSEX"}
+        {"token": "26000", "segment": "nse_cm", "symbol": "NIFTY", "is_index": True},
+        {"token": "26009", "segment": "nse_cm", "symbol": "BANKNIFTY", "is_index": True},
+        {"token": "26037", "segment": "nse_cm", "symbol": "FINNIFTY", "is_index": True},
+        {"token": "1", "segment": "bse_cm", "symbol": "SENSEX", "is_index": True}
     ]
 
     quotes_data = {}
     client = SESSION.get("client")
+    raw_response = None
 
     if SESSION.get("logged_in") and client:
+        # 1. Setup WebSocket callbacks and subscribe tokens for tick-by-tick updates
+        setup_websocket_callbacks(client)
+        for t in tokens_to_fetch:
+            subscribe_token_once(client, t["token"], t["segment"], is_index=t.get("is_index", False))
+
+        # 2. Query REST API snapshot
         try:
             req_payload = [{"instrument_token": str(t["token"]), "exchange_segment": t["segment"]} for t in tokens_to_fetch]
-            q_res = client.quotes(instrument_tokens=req_payload, quote_type="ohlc")
+            q_res = client.quotes(instrument_tokens=req_payload, quote_type="all")
             if not q_res or (isinstance(q_res, dict) and q_res.get("status") == "error"):
                 q_res = client.quotes(instrument_tokens=req_payload, quote_type="ltp")
 
+            raw_response = str(q_res)
+            logging.debug(f"[RAW QUOTES RESP]: {raw_response[:500]}")
+
+            items = []
             if isinstance(q_res, list):
-                for q in q_res:
-                    tok = str(q.get("instrument_token") or q.get("token") or q.get("tok", ""))
-                    v_dict = q.get("v") if isinstance(q.get("v"), dict) else {}
-                    ltp = (
-                        q.get("ltp") or q.get("last_traded_price") or q.get("close") or q.get("c") or q.get("lastPrice") or
-                        v_dict.get("ltp") or v_dict.get("close") or v_dict.get("c")
-                    )
-                    close_val = q.get("close") or q.get("c") or v_dict.get("close") or ltp
-                    if tok and ltp is not None:
+                items = q_res
+            elif isinstance(q_res, dict):
+                if "data" in q_res:
+                    items = q_res["data"] if isinstance(q_res["data"], list) else [q_res["data"]]
+                elif "item" in q_res:
+                    items = q_res["item"] if isinstance(q_res["item"], list) else [q_res["item"]]
+                elif "result" in q_res:
+                    items = q_res["result"] if isinstance(q_res["result"], list) else [q_res["result"]]
+                else:
+                    items = [q_res]
+
+            for q in items:
+                if not isinstance(q, dict):
+                    continue
+                tok = str(q.get("instrument_token") or q.get("token") or q.get("tok") or q.get("instrumentToken", ""))
+                v_dict = q.get("v") if isinstance(q.get("v"), dict) else {}
+                ltp = (
+                    q.get("ltp") or q.get("last_traded_price") or q.get("close") or q.get("c") or q.get("lastPrice") or
+                    q.get("iv") or q.get("ic") or
+                    v_dict.get("ltp") or v_dict.get("close") or v_dict.get("c") or v_dict.get("iv") or v_dict.get("ic")
+                )
+                close_val = q.get("close") or q.get("c") or v_dict.get("close") or ltp
+                chg = q.get("change") or q.get("chg") or q.get("net_change") or v_dict.get("change") or "0.00"
+                if tok and ltp is not None:
+                    try:
                         quotes_data[tok] = {
                             "ltp": float(ltp),
                             "close": float(close_val or ltp),
-                            "change": str(q.get("change", "0.00"))
+                            "change": str(chg)
                         }
-            elif isinstance(q_res, dict) and "data" in q_res:
-                items = q_res["data"] if isinstance(q_res["data"], list) else [q_res["data"]]
-                for q in items:
-                    tok = str(q.get("instrument_token") or q.get("token") or q.get("tok", ""))
-                    v_dict = q.get("v") if isinstance(q.get("v"), dict) else {}
-                    ltp = (
-                        q.get("ltp") or q.get("last_traded_price") or q.get("close") or q.get("c") or q.get("lastPrice") or
-                        v_dict.get("ltp") or v_dict.get("close") or v_dict.get("c")
-                    )
-                    close_val = q.get("close") or q.get("c") or v_dict.get("close") or ltp
-                    if tok and ltp is not None:
-                        quotes_data[tok] = {
-                            "ltp": float(ltp),
-                            "close": float(close_val or ltp),
-                            "change": str(q.get("change", "0.00"))
-                        }
+                    except Exception as parse_ex:
+                        logging.warning(f"Error parsing quote for token {tok}: {parse_ex}")
+
         except Exception as e:
             logging.warning(f"[!] Quotes REST fetch notice: {e}")
-
-        # Subscribe each token ONCE only to WebSocket
-        for t in tokens_to_fetch:
-            subscribe_token_once(client, t["token"], t["segment"])
 
     # Fallback defaults for off-market display if disconnected
     defaults = {
@@ -962,17 +1021,22 @@ def get_market_quotes():
     }
 
     final_quotes = {}
-    for t in tokens_to_fetch:
-        tok = t["token"]
-        sym = t["symbol"]
-        if tok in quotes_data:
-            final_quotes[sym] = quotes_data[tok]
-        else:
-            final_quotes[sym] = defaults[tok]
+    with LIVE_LTP_LOCK:
+        for t in tokens_to_fetch:
+            tok = t["token"]
+            sym = t["symbol"]
+            # Prioritize real-time WebSocket tick if received
+            if tok in LIVE_LTP_CACHE:
+                final_quotes[sym] = LIVE_LTP_CACHE[tok]
+            elif tok in quotes_data:
+                final_quotes[sym] = quotes_data[tok]
+            else:
+                final_quotes[sym] = defaults[tok]
 
     return jsonify({
         "success": True,
         "quotes": final_quotes,
+        "raw_quotes_response": raw_response,
         "websocket_subscribed": list(SUBSCRIBED_TOKENS)
     })
 
