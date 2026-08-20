@@ -3,3 +3,4 @@ __pycache__/
 master_scrips/
 venv/
 strategies.json
+download_all_scrips.py
