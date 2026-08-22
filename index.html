@@ -1963,19 +1963,32 @@
 
                 const tbody = document.getElementById('trackerContractsTbody');
                 if (tbody) {
-                    tbody.innerHTML = data.contracts.map(c => `
-                        <tr>
-                            <td style="font-weight: 700; color: #0f172a;">${c.contract_symbol}</td>
-                            <td><span style="background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 12px; font-weight: 700; font-size: 0.75rem;">${c.type}</span></td>
-                            <td style="font-weight: 600;">${c.strike}</td>
-                            <td>${c.lots}</td>
-                            <td style="font-weight: 700; color: #0284c7;">${c.ltp}</td>
-                            <td>${c.entry}</td>
-                            <td>${c.stoploss}</td>
-                            <td style="font-weight: 700;">${c.pnl}</td>
-                            <td><span style="background: #f1f5f9; color: #64748b; padding: 4px 10px; border-radius: 12px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px;">${c.status}</span></td>
-                        </tr>
-                    `).join('');
+                    tbody.innerHTML = data.contracts.map(c => {
+                        let pnlColor = '#0f172a';
+                        if (c.pnl && c.pnl.includes('+')) pnlColor = '#10b981';
+                        else if (c.pnl && c.pnl.includes('-') && !c.pnl.includes('₹-')) pnlColor = '#ef4444';
+
+                        let statusStyle = 'background: #f1f5f9; color: #64748b;';
+                        if (['EXECUTED', 'ACTIVE', 'RUNNING'].includes(c.status)) {
+                            statusStyle = 'background: #dcfce7; color: #15803d;';
+                        } else if (c.status === 'SL_HIT') {
+                            statusStyle = 'background: #fee2e2; color: #b91c1c;';
+                        }
+
+                        return `
+                            <tr>
+                                <td style="font-weight: 700; color: #0f172a;">${c.contract_symbol}</td>
+                                <td><span style="background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 12px; font-weight: 700; font-size: 0.75rem;">${c.type}</span></td>
+                                <td style="font-weight: 600;">${c.strike}</td>
+                                <td>${c.lots}</td>
+                                <td style="font-weight: 700; color: #0284c7;">${c.ltp}</td>
+                                <td style="font-weight: 600; color: #334155;">${c.entry}</td>
+                                <td style="font-weight: 600; color: #dc2626;">${c.stoploss}</td>
+                                <td style="font-weight: 700; color: ${pnlColor};">${c.pnl}</td>
+                                <td><span style="${statusStyle} padding: 4px 10px; border-radius: 12px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px;">${c.status}</span></td>
+                            </tr>
+                        `;
+                    }).join('');
                 }
 
                 if (data.contracts && data.contracts.length > 0) {

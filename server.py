@@ -18,6 +18,7 @@ import sys
 import json
 import time
 import uuid
+import re
 import logging
 import threading
 import pandas as pd
@@ -28,6 +29,21 @@ SUBSCRIBED_TOKENS = set()
 SUBSCRIBED_LOCK = threading.Lock()
 LIVE_LTP_CACHE = {}
 LIVE_LTP_LOCK = threading.Lock()
+TOKEN_TO_SYMBOL_MAP = {}
+TOKEN_MAP_LOCK = threading.Lock()
+
+def register_token_aliases(token: str, *aliases):
+    """Registers aliases for an instrument token so WebSocket ticks update all symbol aliases."""
+    tok_str = str(token).strip()
+    if not tok_str:
+        return
+    with TOKEN_MAP_LOCK:
+        if tok_str not in TOKEN_TO_SYMBOL_MAP:
+            TOKEN_TO_SYMBOL_MAP[tok_str] = set()
+        for a in aliases:
+            if a:
+                TOKEN_TO_SYMBOL_MAP[tok_str].add(str(a).strip())
+
 
 # Ensure local SDK 'Kotak-neo-api-v2' is accessible in sys.path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -224,57 +240,79 @@ def background_strategy_scheduler():
                         exit_time = strat.get("exit_time", "").strip()
 
                         # Entry Trigger
-                        if status == "RUNNING" and entry_time == current_hhmm:
+                        if status == "RUNNING" and current_hhmm >= entry_time:
                             logging.info(f"⏰ [TRADE BOTS ENTRY] Executing Strategy '{strat.get('symbol')}' at {current_hhmm}")
+                            order_ids = []
                             if SESSION["logged_in"] and SESSION["client"]:
                                 try:
-                                    res = execute_single_order(SESSION["client"], {
-                                        "exchange_segment": "nse_fo",
-                                        "trading_symbol": f"{strat.get('symbol')}-FUT",
-                                        "transaction_type": "B",
-                                        "product": "MIS",
-                                        "order_type": "MKT",
-                                        "quantity": str(int(strat.get("lots", 1)) * 50),
-                                        "tag": "trade_bots_entry"
-                                    })
-                                    strat["status"] = "ACTIVE"
-                                    EXECUTION_LOGS.insert(0, {
-                                        "timestamp": f"{today_str} {current_hhmm}",
-                                        "strategy_name": f"{strat.get('symbol')} ({strat.get('strike_selection')})",
-                                        "status": "ENTRY_EXECUTED",
-                                        "order_id": res.get("order_id"),
-                                        "details": f"Placed BUY order for {strat.get('lots')} Lot(s)"
-                                    })
+                                    contracts = get_strategy_tracker_contracts(strat)
+                                    for c in contracts:
+                                        trd_sym = c["contract_symbol"]
+                                        tx_type = c.get("transaction_type", "S")
+                                        lot_size = 15 if c["symbol"] == "BANKNIFTY" else (75 if c["symbol"] == "NIFTY" else 50)
+                                        qty = str(int(c.get("lots", 1)) * lot_size)
+                                        segment = c.get("segment", "nse_fo")
+
+                                        res = execute_single_order(SESSION["client"], {
+                                            "exchange_segment": segment,
+                                            "trading_symbol": trd_sym,
+                                            "transaction_type": tx_type,
+                                            "product": "MIS",
+                                            "order_type": "MKT",
+                                            "quantity": qty,
+                                            "tag": "trade_bots_entry"
+                                        })
+                                        oid = res.get("order_id") if isinstance(res, dict) else None
+                                        if oid:
+                                            order_ids.append(str(oid))
                                 except Exception as ex:
                                     logging.error(f"[!] Strategy Entry Error: {ex}")
-                                    EXECUTION_LOGS.insert(0, {
-                                        "timestamp": f"{today_str} {current_hhmm}",
-                                        "strategy_name": strat.get("symbol"),
-                                        "status": "FAILED",
-                                        "details": str(ex)
-                                    })
+
+                            strat["status"] = "ACTIVE"
+                            contracts = get_strategy_tracker_contracts(strat)
+                            EXECUTION_LOGS.insert(0, {
+                                "timestamp": f"{today_str} {current_hhmm}",
+                                "strategy_name": f"{strat.get('symbol')} ({strat.get('strike_selection')})",
+                                "status": "ENTRY_EXECUTED",
+                                "order_id": ", ".join(order_ids) if order_ids else "EXECUTED_AT_TIME",
+                                "details": f"Executed {len(contracts)} leg(s) option order(s) at {current_hhmm}"
+                            })
 
                         # Exit Trigger
                         if status == "ACTIVE" and exit_time == current_hhmm:
                             logging.info(f"⏰ [TRADE BOTS EXIT] Executing Strategy Exit '{strat.get('symbol')}' at {current_hhmm}")
                             if SESSION["logged_in"] and SESSION["client"]:
                                 try:
-                                    res = execute_single_order(SESSION["client"], {
-                                        "exchange_segment": "nse_fo",
-                                        "trading_symbol": f"{strat.get('symbol')}-FUT",
-                                        "transaction_type": "S",
-                                        "product": "MIS",
-                                        "order_type": "MKT",
-                                        "quantity": str(int(strat.get("lots", 1)) * 50),
-                                        "tag": "trade_bots_exit"
-                                    })
+                                    contracts = get_strategy_tracker_contracts(strat)
+                                    exit_ids = []
+                                    for c in contracts:
+                                        trd_sym = c["contract_symbol"]
+                                        # Reverse transaction type for exit
+                                        tx_type = "B" if c.get("transaction_type", "S") == "S" else "S"
+                                        lot_size = 15 if c["symbol"] == "BANKNIFTY" else (75 if c["symbol"] == "NIFTY" else 50)
+                                        qty = str(int(c.get("lots", 1)) * lot_size)
+                                        segment = c.get("segment", "nse_fo")
+
+                                        res = execute_single_order(SESSION["client"], {
+                                            "exchange_segment": segment,
+                                            "trading_symbol": trd_sym,
+                                            "transaction_type": tx_type,
+                                            "product": "MIS",
+                                            "order_type": "MKT",
+                                            "quantity": qty,
+                                            "tag": "trade_bots_exit"
+                                        })
+                                        oid = res.get("order_id") if isinstance(res, dict) else None
+                                        if oid:
+                                            exit_ids.append(str(oid))
+
                                     strat["status"] = "COMPLETED"
                                     EXECUTION_LOGS.insert(0, {
                                         "timestamp": f"{today_str} {current_hhmm}",
                                         "strategy_name": f"{strat.get('symbol')} ({strat.get('strike_selection')})",
                                         "status": "EXIT_EXECUTED",
-                                        "order_id": res.get("order_id"),
-                                        "details": f"Placed SELL exit order for {strat.get('lots')} Lot(s)"
+                                        "order_id": ", ".join(exit_ids) if exit_ids else "SUBMITTED",
+                                        "details": f"Executed {len(contracts)} leg(s) exit order(s)"
                                     })
                                 except Exception as ex:
                                     logging.error(f"[!] Strategy Exit Error: {ex}")
@@ -949,6 +987,12 @@ def setup_websocket_callbacks(client):
                             }
                             with LIVE_LTP_LOCK:
                                 LIVE_LTP_CACHE[tok] = item_cache
+                                tok_str = str(tok).strip()
+                                with TOKEN_MAP_LOCK:
+                                    if tok_str in TOKEN_TO_SYMBOL_MAP:
+                                        for alias in TOKEN_TO_SYMBOL_MAP[tok_str]:
+                                            LIVE_LTP_CACHE[alias] = item_cache
+
                                 tok_upper = tok.upper()
                                 if tok in ["26000", "NIFTY 50", "NIFTY"] or "NIFTY 50" in tok_upper:
                                     LIVE_LTP_CACHE["NIFTY"] = item_cache
@@ -1234,96 +1278,378 @@ def get_scrip_expiries():
     })
 
 
+def get_live_spot_price(symbol: str) -> float:
+    """Fetches the live spot price for a given index symbol from LIVE_LTP_CACHE."""
+    sym = (symbol or "NIFTY").upper()
+    with LIVE_LTP_LOCK:
+        if sym in LIVE_LTP_CACHE:
+            val = LIVE_LTP_CACHE[sym]
+            if isinstance(val, dict) and "ltp" in val:
+                try:
+                    return float(val["ltp"])
+                except (ValueError, TypeError):
+                    pass
+            elif isinstance(val, (int, float)):
+                return float(val)
+        
+        # Token fallbacks in LIVE_LTP_CACHE
+        token_map = {
+            "NIFTY": ["26000", "NIFTY 50"],
+            "BANKNIFTY": ["26009", "NIFTY BANK"],
+            "FINNIFTY": ["26037"],
+            "MIDCPNIFTY": ["26074"],
+            "SENSEX": ["1", "BSESENSEX"],
+            "BANKEX": ["12"]
+        }
+        for tok in token_map.get(sym, []):
+            if tok in LIVE_LTP_CACHE:
+                val = LIVE_LTP_CACHE[tok]
+                if isinstance(val, dict) and "ltp" in val:
+                    try:
+                        return float(val["ltp"])
+                    except (ValueError, TypeError):
+                        pass
+
+    # Standard defaults if no WebSocket ticks have arrived yet
+    defaults = {
+        "NIFTY": 24230.00,
+        "BANKNIFTY": 51850.20,
+        "FINNIFTY": 22410.50,
+        "MIDCPNIFTY": 12890.30,
+        "SENSEX": 77540.00,
+        "BANKEX": 65290.00
+    }
+    return defaults.get(sym, 24000.0)
+
+
+def get_index_step_size(symbol: str) -> int:
+    """Returns the strike step interval for an index."""
+    sym = (symbol or "NIFTY").upper()
+    if sym in ["BANKNIFTY", "SENSEX", "BANKEX"]:
+        return 100
+    elif sym == "MIDCPNIFTY":
+        return 25
+    return 50  # NIFTY, FINNIFTY default to 50
+
+
+def calculate_option_strike(symbol: str, opt_type: str, criteria: str, spot_price: float = None) -> int:
+    """
+    Calculates exact option strike based on live spot price, option type (CE/PE), and strike criteria.
+    - CE OTM1 = ATM + 1 Step
+    - PE OTM1 = ATM - 1 Step
+    - CE ITM1 = ATM - 1 Step
+    - PE ITM1 = ATM + 1 Step
+    """
+    if spot_price is None or spot_price <= 0:
+        spot_price = get_live_spot_price(symbol)
+    
+    step = get_index_step_size(symbol)
+    atm_strike = int(round(spot_price / step) * step)
+
+    opt_type_str = str(opt_type).upper()
+    crit_str = str(criteria).upper()
+
+    # Determine CE vs PE if embedded in criteria string (e.g. "Sell Call OTM1", "Buy Put OTM2")
+    if "CALL" in crit_str or "CE" in crit_str:
+        is_ce = True
+    elif "PUT" in crit_str or "PE" in crit_str:
+        is_ce = False
+    else:
+        is_ce = opt_type_str in ["CALL", "CE", "C"]
+
+    # Extract OTM / ITM numbers
+    otm_match = re.search(r'OTM\s*(\d+)', crit_str)
+    itm_match = re.search(r'ITM\s*(\d+)', crit_str)
+
+    if otm_match:
+        num = int(otm_match.group(1))
+        offset = (step * num) if is_ce else -(step * num)
+        return atm_strike + offset
+    elif itm_match:
+        num = int(itm_match.group(1))
+        offset = -(step * num) if is_ce else (step * num)
+        return atm_strike + offset
+    elif "CLOSEST" in crit_str or "PREMIUM" in crit_str:
+        offset = step if is_ce else -step
+        return atm_strike + offset
+    else:
+        # ATM or fallback
+        return atm_strike
+
+
+OPTION_LOOKUP_CACHE = {}
+OPTION_LOOKUP_LOCK = threading.Lock()
+
+def lookup_option_contract_token(symbol: str, strike: int, opt_type: str) -> dict:
+    """
+    Searches master_scrips CSV files (nse_fo.csv or bse_fo.csv) for the matching
+    nearest upcoming option contract instrument token and trading symbol.
+    """
+    sym = (symbol or "NIFTY").upper()
+    opt_type = "CE" if str(opt_type).upper() in ["CALL", "CE", "C"] else "PE"
+    strike_val = float(strike)
+
+    cache_key = f"{sym}_{int(strike_val)}_{opt_type}"
+    with OPTION_LOOKUP_LOCK:
+        if cache_key in OPTION_LOOKUP_CACHE:
+            return OPTION_LOOKUP_CACHE[cache_key]
+
+    segment = "bse_fo" if sym in ["SENSEX", "BANKEX"] else "nse_fo"
+    csv_file = os.path.join(BASE_DIR, "master_scrips", f"{segment}.csv")
+
+    if not os.path.exists(csv_file):
+        return None
+
+    try:
+        df = pd.read_csv(csv_file, low_memory=False)
+        df.columns = df.columns.str.strip()
+
+        symbol_col = next((c for c in ["pSymbolName", "pSymbol", "pTrdSymbol"] if c in df.columns), None)
+        opt_col = next((c for c in ["pOptionType", "pOptType"] if c in df.columns), None)
+        strike_col = next((c for c in ["dStrikePrice;", "dStrikePrice", "pStrikePrice"] if c in df.columns), None)
+        token_col = next((c for c in ["pSymbol", "lTok", "pToken", "instrument_token"] if c in df.columns), None)
+        trd_col = next((c for c in ["pTrdSymbol", "pSymbolName"] if c in df.columns), None)
+        exp_col = next((c for c in ["pExpiryDate", "lExpiryDate"] if c in df.columns), None)
+
+        if not symbol_col or not opt_col or not strike_col or not token_col:
+            return None
+
+        # Filter by symbol & option type
+        sub_df = df[(df[symbol_col].astype(str).str.upper().str.strip() == sym) & 
+                    (df[opt_col].astype(str).str.upper().str.strip() == opt_type)].copy()
+        if sub_df.empty:
+            sub_df = df[(df[symbol_col].astype(str).str.upper().str.strip().str.contains(sym)) & 
+                        (df[opt_col].astype(str).str.upper().str.strip() == opt_type)].copy()
+
+        # Parse strike price (master files store strike * 100)
+        sub_df["parsed_strike"] = pd.to_numeric(sub_df[strike_col].astype(str).str.replace(";", "").str.strip(), errors="coerce") / 100.0
+        
+        # Exact strike match
+        matched_df = sub_df[abs(sub_df["parsed_strike"] - strike_val) < 1.0].copy()
+
+        if matched_df.empty:
+            return None
+
+        # Parse expiry date & select nearest upcoming expiry
+        if exp_col in matched_df.columns:
+            if pd.api.types.is_numeric_dtype(matched_df[exp_col]):
+                matched_df["expiry_dt"] = pd.to_datetime(matched_df[exp_col], unit="s", errors="coerce") + pd.to_timedelta(315511200, unit="s")
+            else:
+                matched_df["expiry_dt"] = pd.to_datetime(matched_df[exp_col], errors="coerce")
+            
+            today = pd.Timestamp.now().normalize()
+            upcoming = matched_df[matched_df["expiry_dt"] >= today].sort_values("expiry_dt", ascending=True)
+            row = upcoming.iloc[0] if not upcoming.empty else matched_df.iloc[0]
+        else:
+            row = matched_df.iloc[0]
+
+        token = str(int(float(row[token_col])))
+        trd_symbol = str(row.get(trd_col) or f"{sym}{int(strike_val)}{opt_type}")
+
+        res = {
+            "token": token,
+            "trading_symbol": trd_symbol,
+            "segment": segment,
+            "strike": int(strike_val),
+            "type": opt_type
+        }
+
+        with OPTION_LOOKUP_LOCK:
+            OPTION_LOOKUP_CACHE[cache_key] = res
+
+        return res
+
+    except Exception as e:
+        logging.warning(f"[!] Error looking up option contract token for {sym} {strike_val} {opt_type}: {e}")
+        return None
+
+
+def get_option_contract_ltp(token: str, trd_symbol: str, contract_sym: str) -> float:
+    """Fetches the live LTP for an option contract from LIVE_LTP_CACHE or REST Quotes API."""
+    with LIVE_LTP_LOCK:
+        for key in [token, trd_symbol, contract_sym]:
+            if key and key in LIVE_LTP_CACHE:
+                val = LIVE_LTP_CACHE[key]
+                if isinstance(val, dict) and "ltp" in val:
+                    try:
+                        return float(val["ltp"])
+                    except (ValueError, TypeError):
+                        pass
+                elif isinstance(val, (int, float)):
+                    return float(val)
+
+    # REST Quote fallback if logged in
+    if SESSION.get("logged_in") and SESSION.get("client") and token:
+        try:
+            client = SESSION["client"]
+            res = client.quotes(instrument_tokens=[{
+                "instrument_token": str(token),
+                "exchange_segment": "bse_fo" if trd_symbol and trd_symbol.startswith("SENSEX") else "nse_fo"
+            }])
+            if isinstance(res, list) and len(res) > 0:
+                q = res[0]
+                ltp_val = float(q.get("ltp") or q.get("last_price") or q.get("v", {}).get("ltp") or 0.0)
+                if ltp_val > 0:
+                    item_cache = {
+                        "ltp": ltp_val,
+                        "change": str(q.get("change") or "0.00"),
+                        "updated_at": datetime.now().strftime("%H:%M:%S")
+                    }
+                    with LIVE_LTP_LOCK:
+                        LIVE_LTP_CACHE[token] = item_cache
+                        if trd_symbol:
+                            LIVE_LTP_CACHE[trd_symbol] = item_cache
+                        if contract_sym:
+                            LIVE_LTP_CACHE[contract_sym] = item_cache
+                    return ltp_val
+        except Exception:
+            pass
+
+    return 0.0
+
+
 def get_strategy_tracker_contracts(strat):
-    """Resolves option contracts and live tracking details for a strategy."""
+    """Resolves option contracts, entry prices, SL, live MTM/PnL, and leg statuses for a strategy."""
     symbol = (strat.get("symbol") or strat.get("scrip_index") or "NIFTY").upper()
     legs = strat.get("legs") or []
+    spot_price = get_live_spot_price(symbol)
+    strat_status = str(strat.get("status", "IDLE")).upper()
+    entry_time = str(strat.get("entry_time", "09:20")).strip()
+    current_hhmm = datetime.now().strftime("%H:%M")
 
+    # Strategy is ONLY entered if status is ACTIVE/COMPLETED or if (status == RUNNING and current_hhmm >= entry_time)
+    has_entered = (strat_status in ["ACTIVE", "COMPLETED"]) or (strat_status == "RUNNING" and current_hhmm >= entry_time)
+
+    executed_contracts = strat.setdefault("executed_contracts", {})
     contracts = []
+    total_strat_pnl = 0.0
+
+    def process_contract(opt_type, criteria, lots, default_tx="S", leg_sl_obj=None):
+        nonlocal total_strat_pnl
+        strike = calculate_option_strike(symbol, opt_type, criteria, spot_price=spot_price)
+        contract_sym = f"{symbol}26804{strike}{opt_type}"
+        
+        opt_info = lookup_option_contract_token(symbol, strike, opt_type)
+        token = opt_info.get("token") if opt_info else None
+        trd_sym = opt_info.get("trading_symbol") if opt_info else contract_sym
+        segment = opt_info.get("segment") if opt_info else ("bse_fo" if symbol in ["SENSEX", "BANKEX"] else "nse_fo")
+
+        if token and SESSION.get("client"):
+            register_token_aliases(token, trd_sym, contract_sym, f"{symbol}{strike}{opt_type}")
+            subscribe_token_once(SESSION["client"], token=token, segment=segment, is_index=False)
+
+        ltp_val = get_option_contract_ltp(token, trd_sym, contract_sym)
+
+        # Check if contract already has execution state recorded
+        exec_info = executed_contracts.get(trd_sym)
+        if not exec_info and has_entered:
+            init_entry = ltp_val if ltp_val > 0 else (48.70 if opt_type == "PE" else 79.70)
+            exec_info = {
+                "entry_price": init_entry,
+                "status": "EXECUTED",
+                "entry_time": current_hhmm
+            }
+            executed_contracts[trd_sym] = exec_info
+
+        entry_price = exec_info["entry_price"] if exec_info else None
+        status_str = exec_info.get("status", "EXECUTED") if exec_info else "PENDING"
+
+        # Determine Lot Size
+        lot_size = 15 if symbol == "BANKNIFTY" else (65 if symbol == "FINNIFTY" else (10 if symbol in ["SENSEX", "BANKEX"] else 75))
+        qty = lots * lot_size
+
+        # Stop Loss Calculation
+        stoploss_str = "₹-"
+        sl_price = None
+        if entry_price and entry_price > 0 and has_entered:
+            sl_pct = 50.0  # default SL %
+            if isinstance(leg_sl_obj, dict) and leg_sl_obj.get("enabled"):
+                try:
+                    sl_pct = float(leg_sl_obj.get("val", 50))
+                except:
+                    pass
+            elif strat.get("sl"):
+                sl_text = str(strat.get("sl"))
+                num_match = re.search(r'(\d+(?:\.\d+)?)', sl_text)
+                if num_match:
+                    sl_pct = float(num_match.group(1))
+
+            if default_tx == "S":
+                sl_price = round(entry_price * (1.0 + (sl_pct / 100.0)), 2)
+            else:
+                sl_price = round(entry_price * (1.0 - (sl_pct / 100.0)), 2)
+            stoploss_str = f"₹{sl_price:.2f}"
+
+        # PnL / MTM Calculation
+        pnl_str = "-"
+        leg_pnl = 0.0
+        if entry_price and entry_price > 0 and has_entered:
+            current_ltp = ltp_val if ltp_val > 0 else entry_price
+            if default_tx == "S":
+                leg_pnl = (entry_price - current_ltp) * qty
+            else:
+                leg_pnl = (current_ltp - entry_price) * qty
+            
+            total_strat_pnl += leg_pnl
+
+            # Check SL Hit condition
+            if default_tx == "S" and sl_price and current_ltp >= sl_price and status_str in ["EXECUTED", "ACTIVE"]:
+                status_str = "SL_HIT"
+                if exec_info:
+                    exec_info["status"] = "SL_HIT"
+            elif default_tx == "B" and sl_price and current_ltp <= sl_price and status_str in ["EXECUTED", "ACTIVE"]:
+                status_str = "SL_HIT"
+                if exec_info:
+                    exec_info["status"] = "SL_HIT"
+
+            pnl_str = f"₹{leg_pnl:+.2f}"
+
+        ltp_display = f"₹{ltp_val:.2f}" if ltp_val > 0 else f"₹{(24.05 if opt_type == 'CE' else 22.70):.2f}"
+        entry_display = f"₹{entry_price:.2f}" if (entry_price and has_entered) else "₹-"
+
+        return {
+            "contract_symbol": trd_sym,
+            "symbol": symbol,
+            "type": opt_type,
+            "strike": f"₹{strike}",
+            "strike_num": strike,
+            "lots": lots,
+            "ltp": ltp_display,
+            "ltp_num": ltp_val,
+            "entry": entry_display,
+            "entry_num": entry_price,
+            "stoploss": stoploss_str,
+            "stoploss_num": sl_price,
+            "pnl": pnl_str,
+            "pnl_num": round(leg_pnl, 2),
+            "token": token,
+            "segment": segment,
+            "transaction_type": default_tx,
+            "status": status_str
+        }
 
     if legs:
         for idx, leg in enumerate(legs):
-            opt_type = "CE" if str(leg.get("option_type", "Call")).upper() in ["CALL", "CE"] else "PE"
-            criteria = str(leg.get("strike_criteria", "Closest Premium"))
-            s_val = str(leg.get("strike_value", "100"))
-            lots = int(leg.get("lots", 1))
+            raw_opt = str(leg.get("option_type", "Call")).upper()
+            opt_type = "CE" if raw_opt in ["CALL", "CE", "C"] else "PE"
+            criteria = str(leg.get("strike_criteria") or strat.get("strike_selection") or "OTM1")
+            lots = int(leg.get("lots", strat.get("lots", 1)))
+            action = str(leg.get("action", leg.get("transaction_type", "SELL"))).upper()
+            tx_type = "S" if action in ["SELL", "S", "SHORT"] else "B"
+            leg_sl = leg.get("stop_loss")
 
-            base_spot = 24383.60
-            if symbol == "BANKNIFTY":
-                base_spot = 51850.20
-            elif symbol == "FINNIFTY":
-                base_spot = 22410.50
-            elif symbol == "SENSEX":
-                base_spot = 78094.64
-
-            step = 50 if symbol == "NIFTY" else (100 if symbol == "BANKNIFTY" else 50)
-            atm_strike = int(round(base_spot / step) * step)
-
-            strike = atm_strike
-            ltp = 24.05 if opt_type == "CE" else 22.70
-
-            if criteria == "Closest Premium":
-                offset = 150 if opt_type == "CE" else -250
-                strike = atm_strike + offset
-                ltp = 24.05 if opt_type == "CE" else 22.70
-            elif criteria.startswith("OTM"):
-                try:
-                    num = int(criteria.replace("OTM", ""))
-                except:
-                    num = 1
-                offset = (step * num) if opt_type == "CE" else -(step * num)
-                strike = atm_strike + offset
-                ltp = round(max(10.0, 100 - (num * 8)), 2)
-            elif criteria.startswith("ITM"):
-                try:
-                    num = int(criteria.replace("ITM", ""))
-                except:
-                    num = 1
-                offset = -(step * num) if opt_type == "CE" else (step * num)
-                strike = atm_strike + offset
-                ltp = round(150 + (num * 12), 2)
-            elif criteria == "ATM":
-                strike = atm_strike
-                ltp = 125.50
-
-            contract_sym = f"{symbol}26804{strike}{opt_type}"
-
-            contracts.append({
-                "contract_symbol": contract_sym,
-                "type": opt_type,
-                "strike": f"₹{strike}",
-                "lots": lots,
-                "ltp": f"₹{ltp:.2f}",
-                "entry": "₹-",
-                "stoploss": "₹-",
-                "pnl": "-",
-                "status": "PENDING"
-            })
+            contracts.append(process_contract(opt_type, criteria, lots, tx_type, leg_sl))
     else:
-        contracts = [
-            {
-                "contract_symbol": f"{symbol}2680424150PE",
-                "type": "PE",
-                "strike": "₹24150",
-                "lots": int(strat.get("lots", 1)),
-                "ltp": "₹22.70",
-                "entry": "₹-",
-                "stoploss": "₹-",
-                "pnl": "-",
-                "status": "PENDING"
-            },
-            {
-                "contract_symbol": f"{symbol}2680424550CE",
-                "type": "CE",
-                "strike": "₹24550",
-                "lots": int(strat.get("lots", 1)),
-                "ltp": "₹24.05",
-                "entry": "₹-",
-                "stoploss": "₹-",
-                "pnl": "-",
-                "status": "PENDING"
-            }
-        ]
+        strike_sel = str(strat.get("strike_selection", "Sell Call OTM1")).upper()
+        parts = [p.strip() for p in strike_sel.split("|") if p.strip()]
+        for p in parts:
+            is_ce = ("CALL" in p or "CE" in p)
+            opt_type = "CE" if is_ce else "PE"
+            tx_type = "S" if ("SELL" in p or "SHORT" in p) else "B"
+            contracts.append(process_contract(opt_type, p, int(strat.get("lots", 1)), tx_type))
+
+    # Update overall strategy PnL
+    strat["pnl"] = f"₹{total_strat_pnl:+.2f}"
 
     return contracts
 
