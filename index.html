@@ -837,15 +837,102 @@
 
             <!-- ================= VIEW 4: PROFILE SETTINGS ================= -->
             <div id="profileView" class="view-panel" style="display: none;">
-                <div class="view-title">Profile Settings</div>
+                <div class="view-title" style="font-size: 1.25rem; font-weight: 800; color: #003642; margin-bottom: 1.25rem;">Profile Settings</div>
 
-                <div class="content-card">
-                    <div class="content-card-title">User Account Overview</div>
-                    <p style="margin-top: 10px; color: var(--text-muted);">
-                        Logged in User: <strong>Ritesh</strong><br>
-                        Active Broker: <strong>Kotak Neo API v2</strong><br>
-                        System Version: <strong>TRADE BOTS v2.4</strong>
-                    </p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+                    
+                    <!-- CARD 1: Connected Account Info -->
+                    <div class="content-card" style="background: #ffffff; border-radius: 10px; padding: 1.5rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                                <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a;">Connected Account Info</div>
+                                <i class="fa-regular fa-user" style="color: #64748b; font-size: 1rem;"></i>
+                            </div>
+
+                            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                                <div>
+                                    <div style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Username / Greeting</div>
+                                    <div id="profile_username" style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin-top: 4px; letter-spacing: 0.5px;">Ritesh</div>
+                                </div>
+
+                                <div>
+                                    <div style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">UCC ID</div>
+                                    <div id="profile_ucc" style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin-top: 4px; letter-spacing: 0.5px;">Y2MEC</div>
+                                </div>
+
+                                <div>
+                                    <div style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Connection Status</div>
+                                    <div id="profile_status" style="margin-top: 6px;">
+                                        <span style="background: #dcfce7; color: #166534; font-size: 0.72rem; font-weight: 800; padding: 4px 10px; border-radius: 12px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #bbf7d0;">
+                                            <span style="width: 6px; height: 6px; background: #16a34a; border-radius: 50%;"></span> ACTIVE
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CARD 2: Manual OMS Limit Order Settings -->
+                    <div class="content-card" style="background: #ffffff; border-radius: 10px; padding: 1.5rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.95rem; font-weight: 700; color: #003642;">Manual OMS Limit Order Settings</div>
+                            <i class="fa-solid fa-sliders" style="color: #64748b; font-size: 1rem;"></i>
+                        </div>
+
+                        <form id="omsSettingsForm" onsubmit="saveOMSSettings(event)">
+                            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                                <div class="form-group">
+                                    <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block;">OFFSET TYPE</label>
+                                    <select id="setting_offset_type" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.88rem; width: 100%; color: #0f172a;">
+                                        <option value="Points (₹)">Points (₹)</option>
+                                        <option value="Percentage (%)">Percentage (%)</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block;">OFFSET VALUE</label>
+                                    <input type="number" step="0.05" id="setting_offset_value" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.88rem; width: 100%; color: #0f172a;" value="0.5">
+                                </div>
+
+                                <button type="submit" class="btn-cyan" style="background: #10b981; color: #ffffff; width: 100%; padding: 11px; font-weight: 700; font-size: 0.85rem; border-radius: 6px; margin-top: 0.5rem; border: none; cursor: pointer; transition: background 0.2s;">
+                                    Save OMS Settings
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- CARD 3: General Display Settings -->
+                    <div class="content-card" style="background: #ffffff; border-radius: 10px; padding: 1.5rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a;">General Display Settings</div>
+                            <i class="fa-regular fa-clock" style="color: #64748b; font-size: 1rem;"></i>
+                        </div>
+
+                        <form id="displaySettingsForm" onsubmit="saveDisplaySettings(event)">
+                            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                                <div class="form-group">
+                                    <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block;">TIME DISPLAY MODE</label>
+                                    <select id="setting_time_mode" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.88rem; width: 100%; color: #0f172a;">
+                                        <option value="24-Hour Format (e.g. 21:09:15)">24-Hour Format (e.g. 21:09:15)</option>
+                                        <option value="12-Hour Format (e.g. 09:09:15 PM)">12-Hour Format (e.g. 09:09:15 PM)</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block;">QUANTITY / SIZE DISPLAY MODE</label>
+                                    <select id="setting_qty_mode" class="form-control" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.88rem; width: 100%; color: #0f172a;">
+                                        <option value="Show in Lots (Base)">Show in Lots (Base)</option>
+                                        <option value="Show in Total Quantity">Show in Total Quantity</option>
+                                    </select>
+                                </div>
+
+                                <button type="submit" class="btn-cyan" style="background: #6366f1; color: #ffffff; width: 100%; padding: 11px; font-weight: 700; font-size: 0.85rem; border-radius: 6px; margin-top: 0.5rem; border: none; cursor: pointer; transition: background 0.2s;">
+                                    Save Display Settings
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
                 </div>
             </div>
 
@@ -1195,10 +1282,17 @@
             setInterval(fetchMarketQuotes, 1000);
             updateExpiryDates('NIFTY');
 
+            // Auto-refresh strategies and live selected contracts tracker every 1 second
+            fetchStrategies();
+            setInterval(fetchStrategies, 1000);
+
+            // Auto-refresh live system execution & feed console logs
+            fetchConsoleLogs();
+            setInterval(fetchConsoleLogs, 1000);
+
             const loggedIn = await checkSessionStatus();
             if (loggedIn) {
                 switchView('timeBasedView', document.querySelector('.sub-item'));
-                fetchStrategies();
             } else {
                 switchView('brokersView', document.querySelector('[onclick*="brokersView"]'));
             }
@@ -1337,6 +1431,7 @@
             if (target) target.style.display = 'block';
             if (el) el.classList.add('active');
             if (viewId === 'timeBasedView') fetchStrategies();
+            if (viewId === 'profileView') loadUserSettings();
         }
 
         async function checkSessionStatus() {
@@ -1344,13 +1439,28 @@
                 const res = await fetch('/api/session');
                 const data = await res.json();
                 const text = document.getElementById('sessionStatusText');
+                const profUser = document.getElementById('profile_username');
+                const profUcc = document.getElementById('profile_ucc');
+                const profStat = document.getElementById('profile_status');
+
                 if (data.logged_in) {
                     isBrokerLoggedIn = true;
-                    text.innerText = `CONNECTED: ${data.ucc}`;
+                    if (text) text.innerText = `CONNECTED: ${data.ucc}`;
+                    if (profUser) profUser.innerText = data.greeting || 'Ritesh';
+                    if (profUcc) profUcc.innerText = data.ucc || 'Y2MEC';
+                    if (profStat) {
+                        profStat.innerHTML = `
+                            <span style="background: #dcfce7; color: #166534; font-size: 0.72rem; font-weight: 800; padding: 4px 10px; border-radius: 12px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #bbf7d0;">
+                                <span style="width: 6px; height: 6px; background: #16a34a; border-radius: 50%;"></span> ACTIVE
+                            </span>
+                        `;
+                    }
                     return true;
                 } else {
                     isBrokerLoggedIn = false;
-                    text.innerText = 'NOT CONNECTED';
+                    if (text) text.innerText = 'NOT CONNECTED';
+                    if (profUser && data.greeting) profUser.innerText = data.greeting;
+                    if (profUcc && data.ucc) profUcc.innerText = data.ucc;
                     return false;
                 }
             } catch (e) {
@@ -1424,9 +1534,11 @@
                     allTbody.innerHTML = `<tr><td colspan="12" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No strategies created yet.</td></tr>`;
                 } else {
                     allTbody.innerHTML = data.all_strategies.map(s => {
-                        const statusBadge = s.status === 'RUNNING' || s.status === 'ACTIVE'
-                            ? `<span class="badge-running">RUNNING</span>`
-                            : `<span class="badge-idle">${s.status}</span>`;
+                        const statusBadge = s.status === 'PREWARMING'
+                            ? `<span class="badge-running" style="background: linear-gradient(135deg, #f97316, #ea580c); color: #ffffff; box-shadow: 0 0 8px rgba(249, 115, 22, 0.5);">🔥 PREWARMING</span>`
+                            : (s.status === 'RUNNING' || s.status === 'ACTIVE'
+                                ? `<span class="badge-running">RUNNING</span>`
+                                : `<span class="badge-idle">${s.status}</span>`);
 
                         const totalLots = getStrategyTotalLots(s);
                         const legCount = s.legs ? s.legs.length : 1;
@@ -1476,6 +1588,9 @@
                         const formattedExit = formatTimeDisplay(s.exit_time);
                         const slText = getStrategySLDisplay(s);
                         const strikeText = getStrategyStrikeDisplay(s);
+                        const activeStatusBadge = s.status === 'PREWARMING'
+                            ? `<span class="badge-running" style="background: linear-gradient(135deg, #f97316, #ea580c); color: #ffffff;">🔥 PREWARMING</span>`
+                            : `<span class="badge-running">${s.status || 'RUNNING'}</span>`;
 
                         return `
                             <tr>
@@ -1489,7 +1604,7 @@
                                 <td>${s.exit_interval || 0}</td>
                                 <td>${slText}</td>
                                 <td>${strikeText}</td>
-                                <td><span class="badge-running">RUNNING</span></td>
+                                <td>${activeStatusBadge}</td>
                                 <td style="font-weight: 700; color: var(--accent-green);">${s.pnl || '₹0.00'}</td>
                             </tr>
                         `;
@@ -1928,17 +2043,16 @@
         }
 
         let activeTrackingStrategyId = null;
+        let lastLoggedTrackerSummary = '';
 
         async function fetchStrategyTracker(stratId = null) {
             const container = document.getElementById('strategyTrackerContainer');
             if (!container) return;
 
             if (!stratId && cachedStrategies && cachedStrategies.length > 0) {
-                const runningStrat = cachedStrategies.find(s => s.status === 'RUNNING' || s.status === 'ACTIVE');
+                const runningStrat = cachedStrategies.find(s => s.status === 'PREWARMING' || s.status === 'RUNNING' || s.status === 'ACTIVE');
                 if (runningStrat) {
                     stratId = runningStrat.id;
-                } else if (activeTrackingStrategyId) {
-                    stratId = activeTrackingStrategyId;
                 }
             }
 
@@ -1968,11 +2082,17 @@
                         if (c.pnl && c.pnl.includes('+')) pnlColor = '#10b981';
                         else if (c.pnl && c.pnl.includes('-') && !c.pnl.includes('₹-')) pnlColor = '#ef4444';
 
-                        let statusStyle = 'background: #f1f5f9; color: #64748b;';
-                        if (['EXECUTED', 'ACTIVE', 'RUNNING'].includes(c.status)) {
-                            statusStyle = 'background: #dcfce7; color: #15803d;';
-                        } else if (c.status === 'SL_HIT') {
-                            statusStyle = 'background: #fee2e2; color: #b91c1c;';
+                        let statusStyle = 'background: #fef3c7; color: #b45309; border: 1px solid #fde68a;';
+                        if (['PREWARMING', 'PRESELECTED'].includes(c.status)) {
+                            statusStyle = 'background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; font-weight: 800;';
+                        } else if (['EXECUTED', 'ACTIVE', 'RUNNING'].includes(c.status)) {
+                            statusStyle = 'background: #dcfce7; color: #15803d; border: 1px solid #86efac;';
+                        } else if (['STOPLOSS HIT', 'SL_HIT'].includes(c.status)) {
+                            statusStyle = 'background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;';
+                        } else if (['EXITED', 'TARGET_HIT', 'COMPLETED'].includes(c.status)) {
+                            statusStyle = 'background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc;';
+                        } else if (['PENDING', 'IDLE'].includes(c.status)) {
+                            statusStyle = 'background: #fef3c7; color: #b45309; border: 1px solid #fde68a;';
                         }
 
                         return `
@@ -1992,8 +2112,12 @@
                 }
 
                 if (data.contracts && data.contracts.length > 0) {
-                    const cSummary = data.contracts.map(c => `${c.contract_symbol} (${c.type} ${c.strike} @ ${c.ltp})`).join(', ');
-                    addConsoleLog(`Resolved Option Contracts for ${data.name}: ${cSummary} (Source: Master Scrip & Live Kotak Neo Quote API)`, 'CONTRACT TRACKER');
+                    const statusKey = data.contracts.map(c => `${c.contract_symbol}:${c.status}:${c.entry}`).join('|');
+                    if (statusKey !== lastLoggedTrackerSummary) {
+                        lastLoggedTrackerSummary = statusKey;
+                        const cSummary = data.contracts.map(c => `${c.contract_symbol} (${c.type} ${c.strike} @ ${c.ltp})`).join(', ');
+                        addConsoleLog(`Resolved Option Contracts for ${data.name}: ${cSummary} (Source: Master Scrip & Live Kotak Neo Quote API)`, 'CONTRACT TRACKER');
+                    }
                 }
             } catch (e) {
                 console.error('Tracker fetch error:', e);
@@ -2101,6 +2225,168 @@
                 alert(data.message || data.error);
             } catch (e) { alert(e.message); }
         }
+
+        async function loadUserSettings() {
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                if (data.success && data.settings) {
+                    const s = data.settings;
+                    if (document.getElementById('setting_offset_type') && s.offset_type) {
+                        document.getElementById('setting_offset_type').value = s.offset_type;
+                    }
+                    if (document.getElementById('setting_offset_value') && s.offset_value !== undefined) {
+                        document.getElementById('setting_offset_value').value = s.offset_value;
+                    }
+                    if (document.getElementById('setting_time_mode') && s.time_display_mode) {
+                        document.getElementById('setting_time_mode').value = s.time_display_mode;
+                    }
+                    if (document.getElementById('setting_qty_mode') && s.quantity_display_mode) {
+                        document.getElementById('setting_qty_mode').value = s.quantity_display_mode;
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading user settings:', e);
+            }
+        }
+
+        async function saveOMSSettings(e) {
+            if (e) e.preventDefault();
+            const payload = {
+                offset_type: document.getElementById('setting_offset_type').value,
+                offset_value: parseFloat(document.getElementById('setting_offset_value').value || 0)
+            };
+
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('OMS Limit Order Settings Saved Successfully!');
+                    if (typeof addConsoleLog === 'function') {
+                        addConsoleLog(`Updated Manual OMS Limit Order Settings: Offset Type = ${payload.offset_type}, Offset Value = ${payload.offset_value}`, 'SETTINGS');
+                    }
+                } else {
+                    alert('Failed to save settings: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Error saving OMS settings: ' + err.message);
+            }
+        }
+
+        async function saveDisplaySettings(e) {
+            if (e) e.preventDefault();
+            const payload = {
+                time_display_mode: document.getElementById('setting_time_mode').value,
+                quantity_display_mode: document.getElementById('setting_qty_mode').value
+            };
+
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('General Display Settings Saved Successfully!');
+                    if (typeof addConsoleLog === 'function') {
+                        addConsoleLog('Updated General Display Settings', 'SETTINGS');
+                    }
+                } else {
+                    alert('Failed to save settings: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Error saving display settings: ' + err.message);
+            }
+        }
+
+        let seenLogIds = new Set();
+
+        async function fetchConsoleLogs() {
+            try {
+                const res = await fetch('/api/console_logs');
+                const data = await res.json();
+                if (!data.success || !data.logs) return;
+
+                const box = document.getElementById('consoleLogBox');
+                if (!box) return;
+
+                // Process logs from oldest to newest for append
+                const logs = [...data.logs].reverse();
+                let hasNew = false;
+
+                logs.forEach(log => {
+                    if (!seenLogIds.has(log.id)) {
+                        seenLogIds.add(log.id);
+                        hasNew = true;
+
+                        let categoryColor = '#38bdf8';
+                        if (['SL_ORDER', 'SL_HIT', 'STOPLOSS_HIT', 'STOPLOSS'].includes(log.category)) categoryColor = '#f59e0b';
+                        else if (['ORDER_EXECUTED', 'ENTRY_EXECUTED', 'ACTIVE', 'COMPLETED'].includes(log.category)) categoryColor = '#10b981';
+                        else if (['WEBSOCKET', 'LIVE_FEED', 'TICK'].includes(log.category)) categoryColor = '#a855f7';
+                        else if (['PANIC', 'ERROR', 'FAILED'].includes(log.category)) categoryColor = '#ef4444';
+                        else if (['SETTINGS', 'BROKER', 'ORDER_DETAILS'].includes(log.category)) categoryColor = '#3b82f6';
+
+                        const lineDiv = document.createElement('div');
+                        lineDiv.style.marginBottom = '4px';
+                        lineDiv.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
+                        lineDiv.style.paddingBottom = '3px';
+                        lineDiv.innerHTML = `
+                            <span style="color: #64748b; font-size: 0.72rem;">[${log.timestamp}]</span>
+                            <span style="background: rgba(255,255,255,0.06); color: ${categoryColor}; padding: 1px 6px; border-radius: 4px; font-weight: 700; font-size: 0.7rem; margin: 0 4px;">${log.category}</span>
+                            <span style="color: #e2e8f0; font-size: 0.78rem;">${log.message}</span>
+                        `;
+                        box.appendChild(lineDiv);
+                    }
+                });
+
+                if (hasNew) {
+                    box.scrollTop = box.scrollHeight;
+                }
+            } catch (e) {
+                console.error('Console logs fetch error:', e);
+            }
+        }
+
+        function addConsoleLog(msg, category = 'SYSTEM') {
+            const box = document.getElementById('consoleLogBox');
+            if (!box) return;
+
+            let categoryColor = '#38bdf8';
+            if (['SL_ORDER', 'SL_HIT', 'STOPLOSS_HIT'].includes(category)) categoryColor = '#f59e0b';
+            else if (['ORDER_EXECUTED', 'ENTRY_EXECUTED'].includes(category)) categoryColor = '#10b981';
+            else if (['SETTINGS', 'BROKER'].includes(category)) categoryColor = '#3b82f6';
+
+            const now = new Date();
+            const timeStr = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+
+            const lineDiv = document.createElement('div');
+            lineDiv.style.marginBottom = '4px';
+            lineDiv.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
+            lineDiv.style.paddingBottom = '3px';
+            lineDiv.innerHTML = `
+                <span style="color: #64748b; font-size: 0.72rem;">[${timeStr}]</span>
+                <span style="background: rgba(255,255,255,0.06); color: ${categoryColor}; padding: 1px 6px; border-radius: 4px; font-weight: 700; font-size: 0.7rem; margin: 0 4px;">${category}</span>
+                <span style="color: #e2e8f0; font-size: 0.78rem;">${msg}</span>
+            `;
+            box.appendChild(lineDiv);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function clearExecutionConsole() {
+            const box = document.getElementById('consoleLogBox');
+            if (box) {
+                box.innerHTML = '<div style="color: #64748b; font-size: 0.78rem;">[System Console] Console cleared. Listening for live data events & order executions...</div>';
+            }
+            seenLogIds.clear();
+        }
+
+        // Initialize user settings on page load
+        document.addEventListener('DOMContentLoaded', loadUserSettings);
     </script>
 </body>
 

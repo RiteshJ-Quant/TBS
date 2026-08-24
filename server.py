@@ -32,6 +32,11 @@ LIVE_LTP_LOCK = threading.Lock()
 TOKEN_TO_SYMBOL_MAP = {}
 TOKEN_MAP_LOCK = threading.Lock()
 
+PREWARMED_CONTRACTS = {}
+PREWARM_ACTIVE = {}
+PREWARM_LOCK = threading.Lock()
+
+
 def register_token_aliases(token: str, *aliases):
     """Registers aliases for an instrument token so WebSocket ticks update all symbol aliases."""
     tok_str = str(token).strip()
@@ -85,6 +90,59 @@ STRATEGIES_FILE = os.path.join(BASE_DIR, "strategies.json")
 STRATEGIES_LOCK = threading.RLock()
 STRATEGIES = []
 EXECUTION_LOGS = []
+
+SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
+SETTINGS_LOCK = threading.RLock()
+APP_SETTINGS = {
+    "offset_type": "Points (₹)",
+    "offset_value": 0.5,
+    "time_display_mode": "24-Hour Format (e.g. 21:09:15)",
+    "quantity_display_mode": "Show in Lots (Base)"
+}
+
+CONSOLE_LOGS = []
+CONSOLE_LOGS_LOCK = threading.Lock()
+
+
+def add_system_console_log(msg: str, category: str = "SYSTEM"):
+    """Adds a log entry to the live system console buffer for the UI console."""
+    entry = {
+        "id": str(uuid.uuid4())[:8],
+        "timestamp": datetime.now().strftime("%H:%M:%S.%f")[:-3],
+        "category": category.upper(),
+        "message": msg
+    }
+    with CONSOLE_LOGS_LOCK:
+        CONSOLE_LOGS.insert(0, entry)
+        if len(CONSOLE_LOGS) > 150:
+            CONSOLE_LOGS.pop()
+    logging.info(f"[{category}] {msg}")
+
+
+
+def load_settings():
+    """Loads user OMS limit order and display settings from JSON file."""
+    global APP_SETTINGS
+    with SETTINGS_LOCK:
+        if os.path.exists(SETTINGS_FILE):
+            try:
+                with open(SETTINGS_FILE, "r") as f:
+                    data = json.load(f)
+                    APP_SETTINGS.update(data)
+                    logging.info(f"[+] Loaded settings from {SETTINGS_FILE}: {APP_SETTINGS}")
+            except Exception as e:
+                logging.error(f"[!] Error loading {SETTINGS_FILE}: {e}")
+
+
+def save_settings():
+    """Saves user OMS limit order and display settings to JSON file."""
+    with SETTINGS_LOCK:
+        try:
+            with open(SETTINGS_FILE, "w") as f:
+                json.dump(APP_SETTINGS, f, indent=2)
+        except Exception as e:
+            logging.error(f"[!] Error saving {SETTINGS_FILE}: {e}")
+
 
 POPULAR_SCRIPS = [
     {"symbol": "NIFTY", "name": "Nifty Index Option/Future", "exchange": "nse_fo"},
@@ -210,6 +268,18 @@ def execute_single_order(client, payload: dict) -> dict:
     if isinstance(response, dict):
         order_id = response.get("order_id") or response.get("nOrderNo") or response.get("result") or response.get("data", {}).get("order_id")
 
+    # Add live console log for order details
+    tx_str = "BUY" if tx_type == "B" else ("SELL" if tx_type == "S" else tx_type)
+    if order_type == "SL":
+        log_msg = f"🛡️ [SL ORDER SUBMITTED] {trading_symbol} {tx_str} Qty={quantity} Trigger=₹{trigger_price} Limit=₹{price} (Order ID: {order_id or 'SUBMITTED'})"
+        add_system_console_log(log_msg, category="SL_ORDER")
+    elif order_type == "L":
+        log_msg = f"🚀 [LIMIT ORDER SUBMITTED] {trading_symbol} {tx_str} Qty={quantity} Price=₹{price} (Order ID: {order_id or 'SUBMITTED'})"
+        add_system_console_log(log_msg, category="ORDER_DETAILS")
+    else:
+        log_msg = f"⚡ [MARKET ORDER SUBMITTED] {trading_symbol} {tx_str} Qty={quantity} (Order ID: {order_id or 'SUBMITTED'})"
+        add_system_console_log(log_msg, category="ORDER_EXECUTED")
+
     return {
         "success": True,
         "order_id": order_id,
@@ -218,117 +288,343 @@ def execute_single_order(client, payload: dict) -> dict:
     }
 
 
+def prewarm_strategy_option_chain(strat):
+    """
+    Pre-warms option chain 20 seconds before entry time.
+    Resolves option strikes (+/- 25 strikes around ATM) and bulk-subscribes
+    broker WebSocket to quote feeds of candidate contracts.
+    """
+    symbol = (strat.get("symbol") or strat.get("scrip_index") or "NIFTY").upper()
+    spot_price = get_live_spot_price(symbol)
+    step = get_index_step_size(symbol)
+    if spot_price <= 0:
+        spot_price = 24500.0 if symbol == "NIFTY" else (52000.0 if symbol == "BANKNIFTY" else 23500.0)
+
+    atm_strike = int(round(spot_price / step) * step)
+    candidate_strikes = [atm_strike + (i * step) for i in range(-15, 16)]
+    
+    client = SESSION.get("client")
+    subscribed_count = 0
+
+    for strike in candidate_strikes:
+        for opt_type in ["CE", "PE"]:
+            opt_info = lookup_option_contract_token(symbol, strike, opt_type)
+            if opt_info:
+                token = opt_info.get("token")
+                trd_sym = opt_info.get("trading_symbol")
+                contract_sym = f"{symbol}26804{strike}{opt_type}"
+                segment = opt_info.get("segment", "nse_fo")
+                if token:
+                    register_token_aliases(token, trd_sym, contract_sym, f"{symbol}{strike}{opt_type}")
+                    if client and SESSION.get("logged_in"):
+                        if subscribe_token_once(client, token=token, segment=segment, is_index=False):
+                            subscribed_count += 1
+
+    logging.info(f"🔥 [PRE-WARM INIT] Pre-warmed option chain for {symbol} around ATM {atm_strike} (Subscribed {subscribed_count} option strike quote feeds)")
+
+
+def evaluate_prewarmed_contracts(strat):
+    """
+    Fast preselection evaluation loop (runs every 250 ms) during 20-second pre-warm window.
+    Preselects qualifying contract legs based on real-time quotes in LIVE_LTP_CACHE.
+    """
+    symbol = (strat.get("symbol") or strat.get("scrip_index") or "NIFTY").upper()
+    legs = strat.get("legs") or []
+    spot_price = get_live_spot_price(symbol)
+    
+    if not legs:
+        opt_type = (strat.get("option_type") or "CE").upper()
+        criteria = strat.get("strike_selection", "ATM")
+        target_val = strat.get("closest_premium") or strat.get("target_premium")
+        lots = int(strat.get("lots", 1))
+        legs = [{
+            "option_type": opt_type,
+            "strike_selection": criteria,
+            "target_val": target_val,
+            "lots": lots,
+            "transaction_type": strat.get("transaction_type", "S")
+        }]
+
+    preselected_legs = []
+    
+    for leg in legs:
+        opt_type = (leg.get("option_type") or leg.get("opt_type") or "CE").upper()
+        criteria = leg.get("strike_selection") or leg.get("criteria") or strat.get("strike_selection", "ATM")
+        target_val = leg.get("target_val") or leg.get("target_premium") or strat.get("closest_premium")
+        lots = int(leg.get("lots", 1))
+        tx_type = leg.get("transaction_type", "S")
+        
+        strike = calculate_option_strike(symbol, opt_type, criteria, spot_price=spot_price, target_val=target_val)
+        opt_info = lookup_option_contract_token(symbol, strike, opt_type)
+        
+        token = opt_info.get("token") if opt_info else None
+        trd_sym = opt_info.get("trading_symbol") if opt_info else f"{symbol}26804{strike}{opt_type}"
+        contract_sym = f"{symbol}26804{strike}{opt_type}"
+        segment = opt_info.get("segment") if opt_info else ("bse_fo" if symbol in ["SENSEX", "BANKEX"] else "nse_fo")
+        
+        ltp_val = get_option_contract_ltp(token, trd_sym, contract_sym)
+        lot_size = get_symbol_lot_size(symbol, opt_info)
+
+        preselected_legs.append({
+            "symbol": symbol,
+            "strike": strike,
+            "option_type": opt_type,
+            "criteria": criteria,
+            "contract_symbol": contract_sym,
+            "trading_symbol": trd_sym,
+            "token": token,
+            "segment": segment,
+            "transaction_type": tx_type,
+            "lots": lots,
+            "lot_size": lot_size,
+            "quantity": lots * lot_size,
+            "ltp": ltp_val,
+            "timestamp": datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        })
+
+    strat_id = strat.get("id")
+    with PREWARM_LOCK:
+        PREWARMED_CONTRACTS[strat_id] = {
+            "strategy_id": strat_id,
+            "symbol": symbol,
+            "updated_at": datetime.now().strftime("%H:%M:%S.%f")[:-3],
+            "legs": preselected_legs
+        }
+    
+    return preselected_legs
+
+
 def background_strategy_scheduler():
     """
-    Background worker thread running continuously to trigger
-    TRADE BOTS time-based strategies at exact entry & exit times.
+    Background worker thread running continuously (250ms loop frequency) to trigger
+    20-second pre-warming and execute TRADE BOTS time-based strategies at exact entry & exit times.
     """
-    logging.info("[+] TRADE BOTS Background Strategy Scheduler Started.")
-    last_checked_min = ""
+    logging.info("[+] TRADE BOTS High-Precision Background Strategy Scheduler Started (250ms loop).")
+    executed_entries = set()
+    executed_exits = set()
 
     while True:
         try:
             now = datetime.now()
-            current_hhmm = now.strftime("%H:%M")
             today_str = now.strftime("%Y-%m-%d")
+            current_hhmm = now.strftime("%H:%M")
 
-            if current_hhmm != last_checked_min:
-                with STRATEGIES_LOCK:
-                    for strat in STRATEGIES:
-                        status = strat.get("status", "IDLE")
-                        entry_time = strat.get("entry_time", "").strip()
-                        exit_time = strat.get("exit_time", "").strip()
+            with STRATEGIES_LOCK:
+                for strat in STRATEGIES:
+                    strat_id = strat.get("id")
+                    status = strat.get("status", "IDLE")
+                    entry_time = str(strat.get("entry_time", "")).strip()
+                    exit_time = str(strat.get("exit_time", "")).strip()
 
-                        # Entry Trigger
-                        if status == "RUNNING" and current_hhmm >= entry_time:
-                            logging.info(f"⏰ [TRADE BOTS ENTRY] Executing Strategy '{strat.get('symbol')}' at {current_hhmm}")
-                            order_ids = []
-                            if SESSION["logged_in"] and SESSION["client"]:
+                    if not entry_time or ":" not in entry_time:
+                        continue
+
+                    try:
+                        entry_h, entry_m = map(int, entry_time.split(":"))
+                        entry_dt = datetime(now.year, now.month, now.day, entry_h, entry_m, 0)
+                    except Exception:
+                        continue
+
+                    time_to_entry = (entry_dt - now).total_seconds()
+                    entry_key = f"{strat_id}_{today_str}_{entry_time}"
+
+                    # -------------------------------------------------------------
+                    # 1. PRE-WARMING PHASE (20 seconds prior to entry time: T-20s to T)
+                    # -------------------------------------------------------------
+                    if status in ["RUNNING", "PREWARMING"] and (entry_key not in executed_entries):
+                        if 0 < time_to_entry <= 20:
+                            if strat.get("status") != "PREWARMING":
+                                strat["status"] = "PREWARMING"
+                            
+                            if not PREWARM_ACTIVE.get(strat_id):
+                                PREWARM_ACTIVE[strat_id] = True
+                                logging.info(f"🔥 [PRE-WARM STARTED] Strategy '{strat.get('symbol')}' starting 20s pre-warming ({time_to_entry:.1f}s remaining before {entry_time})")
                                 try:
-                                    contracts = get_strategy_tracker_contracts(strat)
-                                    for c in contracts:
-                                        trd_sym = c["contract_symbol"]
-                                        tx_type = c.get("transaction_type", "S")
-                                        lot_size = 15 if c["symbol"] == "BANKNIFTY" else (75 if c["symbol"] == "NIFTY" else 50)
-                                        qty = str(int(c.get("lots", 1)) * lot_size)
-                                        segment = c.get("segment", "nse_fo")
+                                    prewarm_strategy_option_chain(strat)
+                                except Exception as pex:
+                                    logging.error(f"[!] Pre-warm option chain error for {strat_id}: {pex}")
 
-                                        res = execute_single_order(SESSION["client"], {
-                                            "exchange_segment": segment,
-                                            "trading_symbol": trd_sym,
-                                            "transaction_type": tx_type,
-                                            "product": "MIS",
-                                            "order_type": "MKT",
-                                            "quantity": qty,
-                                            "tag": "trade_bots_entry"
-                                        })
-                                        oid = res.get("order_id") if isinstance(res, dict) else None
-                                        if oid:
-                                            order_ids.append(str(oid))
-                                except Exception as ex:
-                                    logging.error(f"[!] Strategy Entry Error: {ex}")
+                            try:
+                                legs = evaluate_prewarmed_contracts(strat)
+                                logging.debug(f"⚡ [250ms PRE-WARM TICK] Strat '{strat.get('symbol')}' T-{time_to_entry:.1f}s: Preselected {len(legs)} contract leg(s)")
+                            except Exception as eex:
+                                logging.error(f"[!] Pre-warm evaluation tick error: {eex}")
 
-                            strat["status"] = "ACTIVE"
+                    # -------------------------------------------------------------
+                    # 2. INSTANT STRATEGY ENTRY (At T, e.g. time_to_entry <= 0)
+                    # -------------------------------------------------------------
+                    if status in ["RUNNING", "PREWARMING"] and (entry_key not in executed_entries) and (time_to_entry <= 0) and (time_to_entry >= -300):
+                        executed_entries.add(entry_key)
+                        logging.info(f"⏰ [INSTANT TRADE BOTS ENTRY] Executing Strategy '{strat.get('symbol')}' at {now.strftime('%H:%M:%S.%f')[:-3]} (Scheduled: {entry_time})")
+                        
+                        order_ids = []
+                        prewarmed_data = PREWARMED_CONTRACTS.get(strat_id)
+                        
+                        if prewarmed_data and prewarmed_data.get("legs"):
+                            contracts = prewarmed_data["legs"]
+                            logging.info(f"⚡ [INSTANT ENTRY] Utilizing {len(contracts)} pre-warmed & pre-selected qualifying contract(s) with ZERO strike resolution latency!")
+                        else:
                             contracts = get_strategy_tracker_contracts(strat)
-                            EXECUTION_LOGS.insert(0, {
-                                "timestamp": f"{today_str} {current_hhmm}",
-                                "strategy_name": f"{strat.get('symbol')} ({strat.get('strike_selection')})",
-                                "status": "ENTRY_EXECUTED",
-                                "order_id": ", ".join(order_ids) if order_ids else "EXECUTED_AT_TIME",
-                                "details": f"Executed {len(contracts)} leg(s) option order(s) at {current_hhmm}"
-                            })
 
-                        # Exit Trigger
-                        if status == "ACTIVE" and exit_time == current_hhmm:
-                            logging.info(f"⏰ [TRADE BOTS EXIT] Executing Strategy Exit '{strat.get('symbol')}' at {current_hhmm}")
-                            if SESSION["logged_in"] and SESSION["client"]:
-                                try:
-                                    contracts = get_strategy_tracker_contracts(strat)
-                                    exit_ids = []
-                                    for c in contracts:
-                                        trd_sym = c["contract_symbol"]
-                                        # Reverse transaction type for exit
-                                        tx_type = "B" if c.get("transaction_type", "S") == "S" else "S"
-                                        lot_size = 15 if c["symbol"] == "BANKNIFTY" else (75 if c["symbol"] == "NIFTY" else 50)
-                                        qty = str(int(c.get("lots", 1)) * lot_size)
-                                        segment = c.get("segment", "nse_fo")
+                        if SESSION.get("logged_in") and SESSION.get("client"):
+                            try:
+                                with SETTINGS_LOCK:
+                                    offset_val = float(APP_SETTINGS.get("offset_value", 0.5))
+                                    offset_type = str(APP_SETTINGS.get("offset_type", "Points (₹)"))
 
-                                        res = execute_single_order(SESSION["client"], {
-                                            "exchange_segment": segment,
-                                            "trading_symbol": trd_sym,
-                                            "transaction_type": tx_type,
-                                            "product": "MIS",
-                                            "order_type": "MKT",
-                                            "quantity": qty,
-                                            "tag": "trade_bots_exit"
-                                        })
-                                        oid = res.get("order_id") if isinstance(res, dict) else None
-                                        if oid:
-                                            exit_ids.append(str(oid))
+                                for c in contracts:
+                                    trd_sym = c.get("trading_symbol") or c.get("contract_symbol")
+                                    raw_tx = str(c.get("transaction_type", "S")).strip().upper()
+                                    tx_type = "B" if raw_tx in ["BUY", "B"] else "S"
+                                    lot_sz = c.get("lot_size") or get_symbol_lot_size(c.get("symbol") or strat.get("symbol"), c)
+                                    qty = str(c.get("quantity") or (int(c.get("lots", 1)) * lot_sz))
+                                    segment = c.get("segment", "nse_fo")
 
-                                    strat["status"] = "COMPLETED"
-                                    EXECUTION_LOGS.insert(0, {
-                                        "timestamp": f"{today_str} {current_hhmm}",
-                                        "strategy_name": f"{strat.get('symbol')} ({strat.get('strike_selection')})",
-                                        "status": "EXIT_EXECUTED",
-                                        "order_id": ", ".join(exit_ids) if exit_ids else "SUBMITTED",
-                                        "details": f"Executed {len(contracts)} leg(s) exit order(s)"
+                                    # Retrieve latest LTP for the leg
+                                    ltp_val = float(c.get("ltp") or get_option_contract_ltp(c.get("token"), trd_sym, c.get("contract_symbol")) or 0.0)
+                                    if ltp_val <= 0:
+                                        ltp_val = 100.0
+
+                                    # Calculate limit offset based on user settings
+                                    if "%" in offset_type or "Percentage" in offset_type:
+                                        entry_offset = ltp_val * (offset_val / 100.0)
+                                    else:
+                                        entry_offset = offset_val
+
+                                    # Calculate limit entry price: Price = LTP +/- entry_limit_offset
+                                    if tx_type == "B":
+                                        limit_entry_price = round(ltp_val + entry_offset, 2)
+                                    else:
+                                        limit_entry_price = round(max(0.05, ltp_val - entry_offset), 2)
+
+                                    # 1. Submit Limit Entry Order (order_type="L") via Kotak SDK
+                                    logging.info(f"🚀 [LIMIT ENTRY ORDER] Submitting Limit Order for {trd_sym} {tx_type} Qty={qty} @ Price=₹{limit_entry_price} (LTP=₹{ltp_val}, Offset={entry_offset:.2f})")
+                                    res_entry = execute_single_order(SESSION["client"], {
+                                        "exchange_segment": segment,
+                                        "trading_symbol": trd_sym,
+                                        "transaction_type": tx_type,
+                                        "product": "MIS",
+                                        "order_type": "L",
+                                        "price": str(limit_entry_price),
+                                        "quantity": qty,
+                                        "tag": "trade_bots_limit_entry"
                                     })
-                                except Exception as ex:
-                                    logging.error(f"[!] Strategy Exit Error: {ex}")
+                                    entry_oid = res_entry.get("order_id") if isinstance(res_entry, dict) else None
+                                    if entry_oid:
+                                        order_ids.append(f"LIMIT_ENTRY:{entry_oid}")
 
-                    save_strategies()
-                last_checked_min = current_hhmm
+                                    # 2. Immediately submit matching Stoploss Order (order_type="SL") upon confirmation
+                                    sl_str = str(strat.get("sl") or c.get("sl") or "2 Pts").strip()
+                                    sl_matches = re.findall(r"[-+]?\d*\.\d+|\d+", sl_str)
+                                    sl_val = float(sl_matches[0]) if sl_matches else 2.0
 
-            time.sleep(1)
+                                    if "%" in sl_str or "Percent" in sl_str:
+                                        sl_amount = limit_entry_price * (sl_val / 100.0)
+                                    else:
+                                        sl_amount = sl_val
+
+                                    # Calculate SL trigger price and limit price with margin diff
+                                    if tx_type == "S":
+                                        sl_tx_type = "B"
+                                        sl_trigger_price = round(limit_entry_price + sl_amount, 2)
+                                        sl_limit_price = round(sl_trigger_price + entry_offset, 2)
+                                    else:
+                                        sl_tx_type = "S"
+                                        sl_trigger_price = round(max(0.05, limit_entry_price - sl_amount), 2)
+                                        sl_limit_price = round(max(0.05, sl_trigger_price - entry_offset), 2)
+
+                                    logging.info(f"🛡️ [MATCHING SL ORDER] Submitting SL Order for {trd_sym} {sl_tx_type} Qty={qty} Trigger=₹{sl_trigger_price} Limit=₹{sl_limit_price}")
+                                    res_sl = execute_single_order(SESSION["client"], {
+                                        "exchange_segment": segment,
+                                        "trading_symbol": trd_sym,
+                                        "transaction_type": sl_tx_type,
+                                        "product": "MIS",
+                                        "order_type": "SL",
+                                        "price": str(sl_limit_price),
+                                        "trigger_price": str(sl_trigger_price),
+                                        "quantity": qty,
+                                        "tag": "trade_bots_sl_order"
+                                    })
+                                    sl_oid = res_sl.get("order_id") if isinstance(res_sl, dict) else None
+                                    if sl_oid:
+                                        order_ids.append(f"SL:{sl_oid}")
+
+                            except Exception as ex:
+                                logging.error(f"[!] Strategy Limit Entry / SL Order Error: {ex}")
+
+                        strat["status"] = "ACTIVE"
+                        PREWARM_ACTIVE[strat_id] = False
+                        
+                        EXECUTION_LOGS.insert(0, {
+                            "timestamp": f"{today_str} {now.strftime('%H:%M:%S')}",
+                            "strategy_name": f"{strat.get('symbol')} ({strat.get('strike_selection')})",
+                            "status": "ENTRY_EXECUTED",
+                            "order_id": ", ".join(order_ids) if order_ids else "INSTANT_PREWARMED_ENTRY",
+                            "details": f"Instant pre-warmed execution of {len(contracts)} leg(s) at {now.strftime('%H:%M:%S.%f')[:-3]}"
+                        })
+                        save_strategies()
+
+                    # -------------------------------------------------------------
+                    # 3. STRATEGY EXIT TRIGGER
+                    # -------------------------------------------------------------
+                    if exit_time and ":" in exit_time:
+                        try:
+                            exit_h, exit_m = map(int, exit_time.split(":"))
+                            exit_dt = datetime(now.year, now.month, now.day, exit_h, exit_m, 0)
+                            time_to_exit = (exit_dt - now).total_seconds()
+                            exit_key = f"{strat_id}_{today_str}_{exit_time}"
+
+                            if status == "ACTIVE" and (exit_key not in executed_exits) and (time_to_exit <= 0) and (time_to_exit >= -300):
+                                executed_exits.add(exit_key)
+                                logging.info(f"⏰ [TRADE BOTS EXIT] Executing Strategy Exit '{strat.get('symbol')}' at {now.strftime('%H:%M:%S')}")
+                                exit_ids = []
+                                if SESSION.get("logged_in") and SESSION.get("client"):
+                                    try:
+                                        contracts = get_strategy_tracker_contracts(strat)
+                                        for c in contracts:
+                                            trd_sym = c.get("contract_symbol") or c.get("trading_symbol")
+                                            tx_type = "B" if c.get("transaction_type", "S") == "S" else "S"
+                                            lot_sz = c.get("lot_size") or get_symbol_lot_size(c.get("symbol") or strat.get("symbol"), c)
+                                            qty = str(c.get("quantity") or (int(c.get("lots", 1)) * lot_sz))
+                                            segment = c.get("segment", "nse_fo")
+
+                                            res = execute_single_order(SESSION["client"], {
+                                                "exchange_segment": segment,
+                                                "trading_symbol": trd_sym,
+                                                "transaction_type": tx_type,
+                                                "product": "MIS",
+                                                "order_type": "MKT",
+                                                "quantity": qty,
+                                                "tag": "trade_bots_exit"
+                                            })
+                                            oid = res.get("order_id") if isinstance(res, dict) else None
+                                            if oid:
+                                                exit_ids.append(str(oid))
+                                    except Exception as ex:
+                                        logging.error(f"[!] Strategy Exit Error: {ex}")
+
+                                strat["status"] = "COMPLETED"
+                                EXECUTION_LOGS.insert(0, {
+                                    "timestamp": f"{today_str} {current_hhmm}",
+                                    "strategy_name": f"{strat.get('symbol')} ({strat.get('strike_selection')})",
+                                    "status": "EXIT_EXECUTED",
+                                    "order_id": ", ".join(exit_ids) if exit_ids else "SUBMITTED",
+                                    "details": f"Executed {len(contracts)} leg(s) exit order(s)"
+                                })
+                                save_strategies()
+                        except Exception as exit_ex:
+                            logging.error(f"[!] Exit calculation error: {exit_ex}")
+
+            time.sleep(0.25)
 
         except Exception as e:
             logging.error(f"[!] Exception in scheduler thread: {e}")
             time.sleep(2)
 
 
-# Load strategies & start background worker
+# Load strategies & settings & start background worker
 load_strategies()
+load_settings()
 scheduler_thread = threading.Thread(target=background_strategy_scheduler, daemon=True)
 scheduler_thread.start()
 
@@ -346,9 +642,56 @@ def get_session_status():
     """Returns current Kotak Neo broker login session status."""
     return jsonify({
         "logged_in": SESSION["logged_in"],
-        "ucc": SESSION["ucc"],
+        "ucc": SESSION["ucc"] or "Y2MEC",
+        "greeting": SESSION.get("greeting") or "Ritesh",
         "environment": SESSION["environment"]
     })
+
+
+@app.route("/api/console_logs", methods=["GET"])
+def get_console_logs():
+    """Returns rolling live console logs for the web application console UI."""
+    with CONSOLE_LOGS_LOCK:
+        return jsonify({
+            "success": True,
+            "logs": CONSOLE_LOGS[:60]
+        })
+
+
+@app.route("/api/settings", methods=["GET"])
+def get_user_settings():
+    """Returns user OMS limit order & display settings."""
+    with SETTINGS_LOCK:
+        return jsonify({
+            "success": True,
+            "settings": APP_SETTINGS
+        })
+
+
+@app.route("/api/settings", methods=["POST"])
+def save_user_settings():
+    """Saves user OMS limit order & display settings."""
+    data = request.json or {}
+    with SETTINGS_LOCK:
+        if "offset_type" in data:
+            APP_SETTINGS["offset_type"] = str(data["offset_type"]).strip()
+        if "offset_value" in data:
+            try:
+                APP_SETTINGS["offset_value"] = float(data["offset_value"])
+            except (ValueError, TypeError):
+                pass
+        if "time_display_mode" in data:
+            APP_SETTINGS["time_display_mode"] = str(data["time_display_mode"]).strip()
+        if "quantity_display_mode" in data:
+            APP_SETTINGS["quantity_display_mode"] = str(data["quantity_display_mode"]).strip()
+
+        save_settings()
+        logging.info(f"[+] Updated settings: {APP_SETTINGS}")
+        return jsonify({
+            "success": True,
+            "message": "Settings updated successfully!",
+            "settings": APP_SETTINGS
+        })
 
 
 def download_master_scrips_async(client):
@@ -582,7 +925,7 @@ def get_strategies():
         return jsonify({
             "success": True,
             "all_strategies": STRATEGIES,
-            "active_strategies": [s for s in STRATEGIES if s.get("status") in ["RUNNING", "ACTIVE"]],
+            "active_strategies": [s for s in STRATEGIES if s.get("status") in ["RUNNING", "PREWARMING", "ACTIVE"]],
             "execution_logs": EXECUTION_LOGS[:50]
         })
 
@@ -1332,9 +1675,9 @@ def get_index_step_size(symbol: str) -> int:
     return 50  # NIFTY, FINNIFTY default to 50
 
 
-def calculate_option_strike(symbol: str, opt_type: str, criteria: str, spot_price: float = None) -> int:
+def calculate_option_strike(symbol: str, opt_type: str, criteria: str, spot_price: float = None, target_val: float = None) -> int:
     """
-    Calculates exact option strike based on live spot price, option type (CE/PE), and strike criteria.
+    Calculates exact option strike based on live spot price, option type (CE/PE), strike criteria, and optional target premium value.
     - CE OTM1 = ATM + 1 Step
     - PE OTM1 = ATM - 1 Step
     - CE ITM1 = ATM - 1 Step
@@ -1380,6 +1723,26 @@ def calculate_option_strike(symbol: str, opt_type: str, criteria: str, spot_pric
 OPTION_LOOKUP_CACHE = {}
 OPTION_LOOKUP_LOCK = threading.Lock()
 
+MASTER_DF_CACHE = {}
+MASTER_DF_LOCK = threading.Lock()
+
+def get_master_df(csv_file: str):
+    """Loads and caches master_scrips CSV files into memory for high-performance lookup."""
+    with MASTER_DF_LOCK:
+        if csv_file in MASTER_DF_CACHE:
+            return MASTER_DF_CACHE[csv_file]
+        if not os.path.exists(csv_file):
+            return None
+        try:
+            df = pd.read_csv(csv_file, low_memory=False)
+            df.columns = df.columns.str.strip()
+            MASTER_DF_CACHE[csv_file] = df
+            return df
+        except Exception as e:
+            logging.error(f"[!] Failed to read master script CSV '{csv_file}': {e}")
+            return None
+
+
 def lookup_option_contract_token(symbol: str, strike: int, opt_type: str) -> dict:
     """
     Searches master_scrips CSV files (nse_fo.csv or bse_fo.csv) for the matching
@@ -1397,13 +1760,11 @@ def lookup_option_contract_token(symbol: str, strike: int, opt_type: str) -> dic
     segment = "bse_fo" if sym in ["SENSEX", "BANKEX"] else "nse_fo"
     csv_file = os.path.join(BASE_DIR, "master_scrips", f"{segment}.csv")
 
-    if not os.path.exists(csv_file):
+    df = get_master_df(csv_file)
+    if df is None or df.empty:
         return None
 
     try:
-        df = pd.read_csv(csv_file, low_memory=False)
-        df.columns = df.columns.str.strip()
-
         symbol_col = next((c for c in ["pSymbolName", "pSymbol", "pTrdSymbol"] if c in df.columns), None)
         opt_col = next((c for c in ["pOptionType", "pOptType"] if c in df.columns), None)
         strike_col = next((c for c in ["dStrikePrice;", "dStrikePrice", "pStrikePrice"] if c in df.columns), None)
@@ -1446,12 +1807,21 @@ def lookup_option_contract_token(symbol: str, strike: int, opt_type: str) -> dic
         token = str(int(float(row[token_col])))
         trd_symbol = str(row.get(trd_col) or f"{sym}{int(strike_val)}{opt_type}")
 
+        lot_size_col = next((c for c in ["lLotSize", "iLotSize", "pLotSize", "lMinLotQty"] if c in df.columns), None)
+        lot_size_val = None
+        if lot_size_col and lot_size_col in row and pd.notna(row[lot_size_col]):
+            try:
+                lot_size_val = int(float(row[lot_size_col]))
+            except (ValueError, TypeError):
+                pass
+
         res = {
             "token": token,
             "trading_symbol": trd_symbol,
             "segment": segment,
             "strike": int(strike_val),
-            "type": opt_type
+            "type": opt_type,
+            "lot_size": lot_size_val
         }
 
         with OPTION_LOOKUP_LOCK:
@@ -1462,6 +1832,33 @@ def lookup_option_contract_token(symbol: str, strike: int, opt_type: str) -> dic
     except Exception as e:
         logging.warning(f"[!] Error looking up option contract token for {sym} {strike_val} {opt_type}: {e}")
         return None
+
+
+def get_symbol_lot_size(symbol: str, opt_info: dict = None) -> int:
+    """
+    Returns exact 1-lot quantity for a symbol.
+    Prioritizes lot_size parsed directly from Kotak Neo Master Scrip CSV,
+    with exact Master Scrip fallbacks for NIFTY (65), BANKNIFTY (30), FINNIFTY (60), MIDCPNIFTY (120), SENSEX (20), BANKEX (30).
+    """
+    if opt_info and isinstance(opt_info, dict) and opt_info.get("lot_size"):
+        try:
+            val = int(opt_info["lot_size"])
+            if val > 0:
+                return val
+        except (ValueError, TypeError):
+            pass
+
+    sym = (symbol or "NIFTY").upper()
+    master_lot_sizes = {
+        "NIFTY": 65,
+        "BANKNIFTY": 30,
+        "FINNIFTY": 60,
+        "MIDCPNIFTY": 120,
+        "SENSEX": 20,
+        "BANKEX": 30,
+        "BSESENSEX": 20
+    }
+    return master_lot_sizes.get(sym, 65)
 
 
 def get_option_contract_ltp(token: str, trd_symbol: str, contract_sym: str) -> float:
@@ -1508,6 +1905,145 @@ def get_option_contract_ltp(token: str, trd_symbol: str, contract_sym: str) -> f
     return 0.0
 
 
+def find_strike_closest_to_premium(symbol: str, opt_type: str, target_premium: float, spot_price: float = None) -> int:
+    """
+    Searches option strikes around ATM to find the strike price whose live LTP 
+    is closest to target_premium.
+    """
+    sym = (symbol or "NIFTY").upper()
+    opt_type_clean = "CE" if str(opt_type).upper() in ["CALL", "CE", "C"] else "PE"
+    
+    if spot_price is None or spot_price <= 0:
+        spot_price = get_live_spot_price(sym)
+        
+    step = get_index_step_size(sym)
+    atm_strike = int(round(spot_price / step) * step)
+
+    # Search candidate strikes around ATM (-30 steps to +30 steps)
+    candidate_strikes = [atm_strike + (i * step) for i in range(-30, 31)]
+    best_strike = atm_strike
+    min_diff = float("inf")
+    found_live = False
+    best_ltp = 0.0
+
+    for strike_cand in candidate_strikes:
+        opt_info = lookup_option_contract_token(sym, strike_cand, opt_type_clean)
+        if not opt_info:
+            continue
+            
+        token = opt_info.get("token")
+        trd_sym = opt_info.get("trading_symbol")
+        contract_sym = f"{sym}26804{strike_cand}{opt_type_clean}"
+        segment = opt_info.get("segment", "nse_fo")
+
+        if token and SESSION.get("client"):
+            register_token_aliases(token, trd_sym, contract_sym, f"{sym}{strike_cand}{opt_type_clean}")
+            subscribe_token_once(SESSION["client"], token=token, segment=segment, is_index=False)
+
+        ltp = get_option_contract_ltp(token, trd_sym, contract_sym)
+        if ltp > 0:
+            found_live = True
+            diff = abs(ltp - target_premium)
+            if diff < min_diff:
+                min_diff = diff
+                best_strike = strike_cand
+                best_ltp = ltp
+
+    if found_live:
+        logging.info(f"🎯 [Closest Premium Match] Target Premium: {target_premium}, Symbol: {sym} {opt_type_clean}, Selected Strike: {best_strike} (LTP: ₹{best_ltp:.2f}, Diff: {min_diff:.2f})")
+        return best_strike
+
+    # Fallback estimation if market quotes are currently unavailable/offline
+    est_atm_prem = spot_price * 0.0075
+    if opt_type_clean == "CE":
+        if target_premium <= est_atm_prem:
+            diff_prem = est_atm_prem - target_premium
+            approx_offset = int(round((diff_prem * 2.0) / step) * step)
+            return atm_strike + max(step, approx_offset)
+        else:
+            diff_prem = target_premium - est_atm_prem
+            approx_offset = int(round((diff_prem * 1.5) / step) * step)
+            return max(step, atm_strike - approx_offset)
+    else:
+        if target_premium <= est_atm_prem:
+            diff_prem = est_atm_prem - target_premium
+            approx_offset = int(round((diff_prem * 2.0) / step) * step)
+            return max(step, atm_strike - max(step, approx_offset))
+        else:
+            diff_prem = target_premium - est_atm_prem
+            approx_offset = int(round((diff_prem * 1.5) / step) * step)
+            return atm_strike + approx_offset
+
+
+def calculate_option_strike(symbol: str, opt_type: str, criteria: str, spot_price: float = None, target_val: any = None) -> int:
+    """
+    Calculates exact option strike based on live spot price, option type (CE/PE), and strike criteria.
+    Supports ATM, OTM1..10, ITM1..10, Strike Distance, and Closest Premium to target amount X.
+    """
+    if spot_price is None or spot_price <= 0:
+        spot_price = get_live_spot_price(symbol)
+    
+    step = get_index_step_size(symbol)
+    atm_strike = int(round(spot_price / step) * step)
+
+    opt_type_str = str(opt_type).upper()
+    crit_str = str(criteria).upper()
+
+    if "CALL" in crit_str or "CE" in crit_str:
+        opt_type_clean = "CE"
+        is_ce = True
+    elif "PUT" in crit_str or "PE" in crit_str:
+        opt_type_clean = "PE"
+        is_ce = False
+    else:
+        is_ce = opt_type_str in ["CALL", "CE", "C"]
+        opt_type_clean = "CE" if is_ce else "PE"
+
+    # Extract OTM / ITM numbers
+    otm_match = re.search(r'OTM\s*(\d+)', crit_str)
+    itm_match = re.search(r'ITM\s*(\d+)', crit_str)
+
+    if otm_match:
+        num = int(otm_match.group(1))
+        offset = (step * num) if is_ce else -(step * num)
+        return atm_strike + offset
+    elif itm_match:
+        num = int(itm_match.group(1))
+        offset = -(step * num) if is_ce else (step * num)
+        return atm_strike + offset
+    elif "STRIKE DISTANCE" in crit_str or "DISTANCE" in crit_str:
+        dist_val = 0.0
+        if target_val is not None:
+            try:
+                dist_val = float(target_val)
+            except (ValueError, TypeError):
+                pass
+        if dist_val == 0.0:
+            num_match = re.search(r'(\d+(?:\.\d+)?)', crit_str)
+            if num_match:
+                dist_val = float(num_match.group(1))
+        offset = int(round(dist_val / step) * step) if dist_val > 0 else step
+        return (atm_strike + offset) if is_ce else (atm_strike - offset)
+    elif "CLOSEST" in crit_str or "PREMIUM" in crit_str:
+        prem_val = None
+        if target_val is not None:
+            try:
+                prem_val = float(target_val)
+            except (ValueError, TypeError):
+                pass
+        if prem_val is None:
+            num_match = re.search(r'(\d+(?:\.\d+)?)', crit_str)
+            if num_match:
+                prem_val = float(num_match.group(1))
+        if prem_val is None or prem_val <= 0:
+            prem_val = 20.0  # sensible default if no target premium specified
+        
+        return find_strike_closest_to_premium(symbol, opt_type_clean, prem_val, spot_price=spot_price)
+    else:
+        # ATM or fallback
+        return atm_strike
+
+
 def get_strategy_tracker_contracts(strat):
     """Resolves option contracts, entry prices, SL, live MTM/PnL, and leg statuses for a strategy."""
     symbol = (strat.get("symbol") or strat.get("scrip_index") or "NIFTY").upper()
@@ -1515,18 +2051,22 @@ def get_strategy_tracker_contracts(strat):
     spot_price = get_live_spot_price(symbol)
     strat_status = str(strat.get("status", "IDLE")).upper()
     entry_time = str(strat.get("entry_time", "09:20")).strip()
+    exit_time = str(strat.get("exit_time", "15:20")).strip()
     current_hhmm = datetime.now().strftime("%H:%M")
 
     # Strategy is ONLY entered if status is ACTIVE/COMPLETED or if (status == RUNNING and current_hhmm >= entry_time)
     has_entered = (strat_status in ["ACTIVE", "COMPLETED"]) or (strat_status == "RUNNING" and current_hhmm >= entry_time)
 
+    # Strategy is EXITED if status is COMPLETED or (status == ACTIVE and current_hhmm >= exit_time)
+    has_exited = (strat_status == "COMPLETED") or (strat_status == "ACTIVE" and current_hhmm >= exit_time)
+
     executed_contracts = strat.setdefault("executed_contracts", {})
     contracts = []
     total_strat_pnl = 0.0
 
-    def process_contract(opt_type, criteria, lots, default_tx="S", leg_sl_obj=None):
+    def process_contract(opt_type, criteria, lots, default_tx="S", leg_sl_obj=None, leg_tgt_obj=None, target_val=None):
         nonlocal total_strat_pnl
-        strike = calculate_option_strike(symbol, opt_type, criteria, spot_price=spot_price)
+        strike = calculate_option_strike(symbol, opt_type, criteria, spot_price=spot_price, target_val=target_val)
         contract_sym = f"{symbol}26804{strike}{opt_type}"
         
         opt_info = lookup_option_contract_token(symbol, strike, opt_type)
@@ -1540,7 +2080,7 @@ def get_strategy_tracker_contracts(strat):
 
         ltp_val = get_option_contract_ltp(token, trd_sym, contract_sym)
 
-        # Check if contract already has execution state recorded
+        # Check execution state
         exec_info = executed_contracts.get(trd_sym)
         if not exec_info and has_entered:
             init_entry = ltp_val if ltp_val > 0 else (48.70 if opt_type == "PE" else 79.70)
@@ -1551,17 +2091,33 @@ def get_strategy_tracker_contracts(strat):
             }
             executed_contracts[trd_sym] = exec_info
 
-        entry_price = exec_info["entry_price"] if exec_info else None
-        status_str = exec_info.get("status", "EXECUTED") if exec_info else "PENDING"
+        entry_price = exec_info["entry_price"] if (exec_info and has_entered) else None
+        
+        # Determine status string
+        if strat_status == "PREWARMING":
+            status_str = "PREWARMING"
+        elif not has_entered or entry_price is None:
+            status_str = "PENDING"
+        else:
+            saved_status = exec_info.get("status", "EXECUTED") if exec_info else "EXECUTED"
+            if saved_status in ["SL_HIT", "STOPLOSS HIT"]:
+                status_str = "STOPLOSS HIT"
+            elif saved_status in ["EXITED", "TARGET_HIT"]:
+                status_str = "EXITED"
+            else:
+                status_str = "EXECUTED"
 
         # Determine Lot Size
-        lot_size = 15 if symbol == "BANKNIFTY" else (65 if symbol == "FINNIFTY" else (10 if symbol in ["SENSEX", "BANKEX"] else 75))
+        lot_size = get_symbol_lot_size(symbol, opt_info)
         qty = lots * lot_size
 
-        # Stop Loss Calculation
+        # Stop Loss & Target Profit Calculation
         stoploss_str = "₹-"
         sl_price = None
+        tgt_price = None
+
         if entry_price and entry_price > 0 and has_entered:
+            # Stop Loss Calculation
             sl_pct = 50.0  # default SL %
             if isinstance(leg_sl_obj, dict) and leg_sl_obj.get("enabled"):
                 try:
@@ -1580,9 +2136,23 @@ def get_strategy_tracker_contracts(strat):
                 sl_price = round(entry_price * (1.0 - (sl_pct / 100.0)), 2)
             stoploss_str = f"₹{sl_price:.2f}"
 
+            # Target Profit Calculation
+            if isinstance(leg_tgt_obj, dict) and leg_tgt_obj.get("enabled"):
+                try:
+                    tgt_val = float(leg_tgt_obj.get("val", 0))
+                    tgt_type = str(leg_tgt_obj.get("type", "Points (Pts)"))
+                    if tgt_val > 0:
+                        if "Percent" in tgt_type or "%" in tgt_type:
+                            tgt_price = round(entry_price * (1.0 - (tgt_val / 100.0)), 2) if default_tx == "S" else round(entry_price * (1.0 + (tgt_val / 100.0)), 2)
+                        else:
+                            tgt_price = round(entry_price - tgt_val, 2) if default_tx == "S" else round(entry_price + tgt_val, 2)
+                except Exception:
+                    pass
+
         # PnL / MTM Calculation
         pnl_str = "-"
         leg_pnl = 0.0
+
         if entry_price and entry_price > 0 and has_entered:
             current_ltp = ltp_val if ltp_val > 0 else entry_price
             if default_tx == "S":
@@ -1592,15 +2162,38 @@ def get_strategy_tracker_contracts(strat):
             
             total_strat_pnl += leg_pnl
 
-            # Check SL Hit condition
-            if default_tx == "S" and sl_price and current_ltp >= sl_price and status_str in ["EXECUTED", "ACTIVE"]:
-                status_str = "SL_HIT"
+            # Status Evaluation
+            if has_exited:
+                status_str = "EXITED"
                 if exec_info:
-                    exec_info["status"] = "SL_HIT"
-            elif default_tx == "B" and sl_price and current_ltp <= sl_price and status_str in ["EXECUTED", "ACTIVE"]:
-                status_str = "SL_HIT"
-                if exec_info:
-                    exec_info["status"] = "SL_HIT"
+                    exec_info["status"] = "EXITED"
+            elif status_str not in ["STOPLOSS HIT", "EXITED"]:
+                # Check Stoploss Hit
+                if default_tx == "S" and sl_price and current_ltp >= sl_price:
+                    status_str = "STOPLOSS HIT"
+                    if exec_info:
+                        exec_info["status"] = "STOPLOSS HIT"
+                elif default_tx == "B" and sl_price and current_ltp <= sl_price:
+                    status_str = "STOPLOSS HIT"
+                    if exec_info:
+                        exec_info["status"] = "STOPLOSS HIT"
+                # Check Target Profit Hit / Exited
+                elif default_tx == "S" and tgt_price and current_ltp <= tgt_price:
+                    status_str = "EXITED"
+                    if exec_info:
+                        exec_info["status"] = "EXITED"
+                elif default_tx == "B" and tgt_price and current_ltp >= tgt_price:
+                    status_str = "EXITED"
+                    if exec_info:
+                        exec_info["status"] = "EXITED"
+                elif strat.get("overall_target") and float(strat.get("overall_target")) > 0 and total_strat_pnl >= float(strat.get("overall_target")):
+                    status_str = "EXITED"
+                    if exec_info:
+                        exec_info["status"] = "EXITED"
+                elif strat.get("overall_sl") and float(strat.get("overall_sl")) > 0 and total_strat_pnl <= -float(strat.get("overall_sl")):
+                    status_str = "STOPLOSS HIT"
+                    if exec_info:
+                        exec_info["status"] = "STOPLOSS HIT"
 
             pnl_str = f"₹{leg_pnl:+.2f}"
 
@@ -1617,11 +2210,11 @@ def get_strategy_tracker_contracts(strat):
             "ltp": ltp_display,
             "ltp_num": ltp_val,
             "entry": entry_display,
-            "entry_num": entry_price,
-            "stoploss": stoploss_str,
-            "stoploss_num": sl_price,
-            "pnl": pnl_str,
-            "pnl_num": round(leg_pnl, 2),
+            "entry_num": entry_price if has_entered else None,
+            "stoploss": stoploss_str if has_entered else "₹-",
+            "stoploss_num": sl_price if has_entered else None,
+            "pnl": pnl_str if has_entered else "-",
+            "pnl_num": round(leg_pnl, 2) if has_entered else 0.0,
             "token": token,
             "segment": segment,
             "transaction_type": default_tx,
@@ -1633,12 +2226,14 @@ def get_strategy_tracker_contracts(strat):
             raw_opt = str(leg.get("option_type", "Call")).upper()
             opt_type = "CE" if raw_opt in ["CALL", "CE", "C"] else "PE"
             criteria = str(leg.get("strike_criteria") or strat.get("strike_selection") or "OTM1")
+            target_val = leg.get("strike_value")
             lots = int(leg.get("lots", strat.get("lots", 1)))
             action = str(leg.get("action", leg.get("transaction_type", "SELL"))).upper()
             tx_type = "S" if action in ["SELL", "S", "SHORT"] else "B"
             leg_sl = leg.get("stop_loss")
+            leg_tgt = leg.get("target_profit")
 
-            contracts.append(process_contract(opt_type, criteria, lots, tx_type, leg_sl))
+            contracts.append(process_contract(opt_type, criteria, lots, tx_type, leg_sl, leg_tgt, target_val))
     else:
         strike_sel = str(strat.get("strike_selection", "Sell Call OTM1")).upper()
         parts = [p.strip() for p in strike_sel.split("|") if p.strip()]
@@ -1646,7 +2241,7 @@ def get_strategy_tracker_contracts(strat):
             is_ce = ("CALL" in p or "CE" in p)
             opt_type = "CE" if is_ce else "PE"
             tx_type = "S" if ("SELL" in p or "SHORT" in p) else "B"
-            contracts.append(process_contract(opt_type, p, int(strat.get("lots", 1)), tx_type))
+            contracts.append(process_contract(opt_type, p, int(strat.get("lots", 1)), tx_type, None, None, None))
 
     # Update overall strategy PnL
     strat["pnl"] = f"₹{total_strat_pnl:+.2f}"
@@ -1656,17 +2251,17 @@ def get_strategy_tracker_contracts(strat):
 
 @app.route("/api/strategies/tracker", methods=["GET"])
 def get_strategy_tracker():
-    """Returns tracker execution status and selected option contracts for a strategy."""
+    """Returns tracker execution status and selected option contracts for an active strategy."""
     strat_id = request.args.get("id")
     with STRATEGIES_LOCK:
         strat = None
         if strat_id:
-            strat = next((s for s in STRATEGIES if s["id"] == strat_id), None)
-        if not strat and STRATEGIES:
-            strat = STRATEGIES[0]
+            strat = next((s for s in STRATEGIES if s["id"] == strat_id and s.get("status") in ["RUNNING", "PREWARMING", "ACTIVE"]), None)
+        if not strat:
+            strat = next((s for s in STRATEGIES if s.get("status") in ["RUNNING", "PREWARMING", "ACTIVE"]), None)
 
         if not strat:
-            return jsonify({"success": False, "error": "No strategy found."}), 404
+            return jsonify({"success": False, "error": "No active strategy found."}), 404
 
         contracts = get_strategy_tracker_contracts(strat)
 
