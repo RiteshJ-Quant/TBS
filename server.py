@@ -2150,29 +2150,33 @@ def get_strategy_tracker_contracts(strat):
         qty = lots * lot_size
 
         # Stop Loss & Target Profit Calculation
-        stoploss_str = "₹-"
+        stoploss_str = "-"
         sl_price = None
         tgt_price = None
 
         if entry_price and entry_price > 0 and has_entered:
             # Stop Loss Calculation
-            sl_pct = 50.0  # default SL %
+            sl_pct = None
             if isinstance(leg_sl_obj, dict) and leg_sl_obj.get("enabled"):
                 try:
-                    sl_pct = float(leg_sl_obj.get("val", 50))
-                except:
+                    sl_pct = float(leg_sl_obj.get("val", 0))
+                except Exception:
                     pass
-            elif strat.get("sl"):
-                sl_text = str(strat.get("sl"))
-                num_match = re.search(r'(\d+(?:\.\d+)?)', sl_text)
-                if num_match:
-                    sl_pct = float(num_match.group(1))
-
-            if default_tx == "S":
-                sl_price = round(entry_price * (1.0 + (sl_pct / 100.0)), 2)
             else:
-                sl_price = round(entry_price * (1.0 - (sl_pct / 100.0)), 2)
-            stoploss_str = f"₹{sl_price:.2f}"
+                sl_text = str(strat.get("sl") or "").strip()
+                if sl_text and sl_text.upper() not in ["NONE", "DISABLED", "OFF", "0", "0 PTS", "0.0", "0%", "0.0 PTS"]:
+                    num_match = re.search(r'(\d+(?:\.\d+)?)', sl_text)
+                    if num_match:
+                        sl_pct = float(num_match.group(1))
+
+            if sl_pct is not None and sl_pct > 0:
+                if default_tx == "S":
+                    sl_price = round(entry_price * (1.0 + (sl_pct / 100.0)), 2)
+                else:
+                    sl_price = round(entry_price * (1.0 - (sl_pct / 100.0)), 2)
+                stoploss_str = f"₹{sl_price:.2f}"
+            else:
+                stoploss_str = "-"
 
             # Target Profit Calculation
             if isinstance(leg_tgt_obj, dict) and leg_tgt_obj.get("enabled"):
