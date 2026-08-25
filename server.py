@@ -218,6 +218,13 @@ def generate_totp_code(totp_secret: str) -> str:
         return ""
 
 
+def round_to_tick(price: float, tick_size: float = 0.05) -> float:
+    """Rounds price to nearest exchange tick size (0.05 for NSE)."""
+    if price <= 0:
+        return tick_size
+    return round(round(price / tick_size) * tick_size, 2)
+
+
 def execute_single_order(client, payload: dict) -> dict:
     """Helper to place an order via Kotak Neo API client."""
     exchange_segment = str(payload.get("exchange_segment", "nse_cm")).strip().lower()
@@ -247,45 +254,64 @@ def execute_single_order(client, payload: dict) -> dict:
     if order_type not in ["SL", "SL-M"]:
         trigger_price = "0"
 
-    response = client.place_order(
-        exchange_segment=exchange_segment,
-        product=product,
-        price=price,
-        order_type=order_type,
-        quantity=quantity,
-        validity=validity,
-        trading_symbol=trading_symbol,
-        transaction_type=tx_type,
-        amo=amo,
-        disclosed_quantity=disclosed_quantity,
-        market_protection=market_protection,
-        pf=pf,
-        trigger_price=trigger_price,
-        tag=tag
-    )
+    try:
+        response = client.place_order(
+            exchange_segment=exchange_segment,
+            product=product,
+            price=price,
+            order_type=order_type,
+            quantity=quantity,
+            validity=validity,
+            trading_symbol=trading_symbol,
+            transaction_type=tx_type,
+            amo=amo,
+            disclosed_quantity=disclosed_quantity,
+            market_protection=market_protection,
+            pf=pf,
+            trigger_price=trigger_price,
+            tag=tag
+        )
+    except Exception as ex:
+        response = {"stat": "Not_Ok", "errMsg": str(ex)}
 
     order_id = None
-    if isinstance(response, dict):
-        order_id = response.get("order_id") or response.get("nOrderNo") or response.get("result") or response.get("data", {}).get("order_id")
+    stat = None
+    err_msg = None
 
-    # Add live console log for order details
+    if isinstance(response, dict):
+        stat = str(response.get("stat") or response.get("status") or "").strip()
+        order_id = response.get("order_id") or response.get("nOrderNo") or response.get("result") or response.get("data", {}).get("order_id")
+        err_msg = response.get("errMsg") or response.get("message") or response.get("reason") or response.get("error")
+
     tx_str = "BUY" if tx_type == "B" else ("SELL" if tx_type == "S" else tx_type)
-    if order_type == "SL":
-        log_msg = f"🛡️ [SL ORDER SUBMITTED] {trading_symbol} {tx_str} Qty={quantity} Trigger=₹{trigger_price} Limit=₹{price} (Order ID: {order_id or 'SUBMITTED'})"
-        add_system_console_log(log_msg, category="SL_ORDER")
-    elif order_type == "L":
-        log_msg = f"🚀 [LIMIT ORDER SUBMITTED] {trading_symbol} {tx_str} Qty={quantity} Price=₹{price} (Order ID: {order_id or 'SUBMITTED'})"
-        add_system_console_log(log_msg, category="ORDER_DETAILS")
+    
+    # Check if order was successfully accepted by broker
+    is_success = bool(order_id) or (stat in ["Ok", "success", "OK", "0"])
+
+    if is_success and order_id:
+        if order_type == "SL":
+            log_msg = f"🛡️ [SL ORDER SUBMITTED] {trading_symbol} {tx_str} Qty={quantity} Trigger=₹{trigger_price} Limit=₹{price} (Order ID: {order_id})"
+            add_system_console_log(log_msg, category="SL_ORDER")
+        elif order_type == "L":
+            log_msg = f"🚀 [LIMIT ORDER SUBMITTED] {trading_symbol} {tx_str} Qty={quantity} Price=₹{price} (Order ID: {order_id})"
+            add_system_console_log(log_msg, category="ORDER_DETAILS")
+        else:
+            log_msg = f"⚡ [MARKET ORDER SUBMITTED] {trading_symbol} {tx_str} Qty={quantity} (Order ID: {order_id})"
+            add_system_console_log(log_msg, category="ORDER_EXECUTED")
     else:
-        log_msg = f"⚡ [MARKET ORDER SUBMITTED] {trading_symbol} {tx_str} Qty={quantity} (Order ID: {order_id or 'SUBMITTED'})"
-        add_system_console_log(log_msg, category="ORDER_EXECUTED")
+        failure_reason = err_msg or "Broker API returned no Order ID or status Not_Ok"
+        log_msg = f"❌ [ORDER REJECTED] {trading_symbol} {tx_str} ({order_type}) Qty={quantity} - Reason: {failure_reason}"
+        logging.error(f"[!] Order Placement Rejected by Broker: {trading_symbol} | Response: {response}")
+        add_system_console_log(log_msg, category="BROKER")
 
     return {
-        "success": True,
-        "order_id": order_id,
+        "success": is_success,
+        "order_id": order_id if is_success else None,
+        "error": err_msg if not is_success else None,
         "raw_response": response,
         "payload": payload
     }
+
 
 
 def prewarm_strategy_option_chain(strat):
@@ -491,11 +517,11 @@ def background_strategy_scheduler():
                                     else:
                                         entry_offset = offset_val
 
-                                    # Calculate limit entry price: Price = LTP +/- entry_limit_offset
+                                    # Calculate limit entry price: Price = LTP +/- entry_limit_offset (rounded to tick 0.05)
                                     if tx_type == "B":
-                                        limit_entry_price = round(ltp_val + entry_offset, 2)
+                                        limit_entry_price = round_to_tick(ltp_val + entry_offset)
                                     else:
-                                        limit_entry_price = round(max(0.05, ltp_val - entry_offset), 2)
+                                        limit_entry_price = round_to_tick(max(0.05, ltp_val - entry_offset))
 
                                     # 1. Submit Limit Entry Order (order_type="L") via Kotak SDK
                                     logging.info(f"🚀 [LIMIT ENTRY ORDER] Submitting Limit Order for {trd_sym} {tx_type} Qty={qty} @ Price=₹{limit_entry_price} (LTP=₹{ltp_val}, Offset={entry_offset:.2f})")
@@ -513,41 +539,53 @@ def background_strategy_scheduler():
                                     if entry_oid:
                                         order_ids.append(f"LIMIT_ENTRY:{entry_oid}")
 
-                                    # 2. Immediately submit matching Stoploss Order (order_type="SL") upon confirmation
-                                    sl_str = str(strat.get("sl") or c.get("sl") or "2 Pts").strip()
-                                    sl_matches = re.findall(r"[-+]?\d*\.\d+|\d+", sl_str)
-                                    sl_val = float(sl_matches[0]) if sl_matches else 2.0
+                                    # 2. Check if Stop Loss (SL) is explicitly configured and enabled in strategy / contract
+                                    sl_raw = strat.get("sl") if strat.get("sl") is not None else c.get("sl")
+                                    sl_str = str(sl_raw).strip() if sl_raw is not None else ""
 
-                                    if "%" in sl_str or "Percent" in sl_str:
-                                        sl_amount = limit_entry_price * (sl_val / 100.0)
-                                    else:
-                                        sl_amount = sl_val
+                                    is_sl_enabled = False
+                                    sl_val = 0.0
+                                    if sl_str and sl_str.upper() not in ["NONE", "DISABLED", "OFF", "0", "0 PTS", "0.0", "0%", "0.0 PTS"]:
+                                        sl_matches = re.findall(r"[-+]?\d*\.\d+|\d+", sl_str)
+                                        if sl_matches and float(sl_matches[0]) > 0:
+                                            is_sl_enabled = True
+                                            sl_val = float(sl_matches[0])
 
-                                    # Calculate SL trigger price and limit price with margin diff
-                                    if tx_type == "S":
-                                        sl_tx_type = "B"
-                                        sl_trigger_price = round(limit_entry_price + sl_amount, 2)
-                                        sl_limit_price = round(sl_trigger_price + entry_offset, 2)
-                                    else:
-                                        sl_tx_type = "S"
-                                        sl_trigger_price = round(max(0.05, limit_entry_price - sl_amount), 2)
-                                        sl_limit_price = round(max(0.05, sl_trigger_price - entry_offset), 2)
+                                    # Only submit matching SL Order if SL is enabled AND entry order was accepted by broker
+                                    if is_sl_enabled and entry_oid:
+                                        if "%" in sl_str or "Percent" in sl_str:
+                                            sl_amount = limit_entry_price * (sl_val / 100.0)
+                                        else:
+                                            sl_amount = sl_val
 
-                                    logging.info(f"🛡️ [MATCHING SL ORDER] Submitting SL Order for {trd_sym} {sl_tx_type} Qty={qty} Trigger=₹{sl_trigger_price} Limit=₹{sl_limit_price}")
-                                    res_sl = execute_single_order(SESSION["client"], {
-                                        "exchange_segment": segment,
-                                        "trading_symbol": trd_sym,
-                                        "transaction_type": sl_tx_type,
-                                        "product": "MIS",
-                                        "order_type": "SL",
-                                        "price": str(sl_limit_price),
-                                        "trigger_price": str(sl_trigger_price),
-                                        "quantity": qty,
-                                        "tag": "trade_bots_sl_order"
-                                    })
-                                    sl_oid = res_sl.get("order_id") if isinstance(res_sl, dict) else None
-                                    if sl_oid:
-                                        order_ids.append(f"SL:{sl_oid}")
+                                        # Calculate SL trigger price and limit price with margin diff (rounded to tick 0.05)
+                                        if tx_type == "S":
+                                            sl_tx_type = "B"
+                                            sl_trigger_price = round_to_tick(limit_entry_price + sl_amount)
+                                            sl_limit_price = round_to_tick(sl_trigger_price + entry_offset)
+                                        else:
+                                            sl_tx_type = "S"
+                                            sl_trigger_price = round_to_tick(max(0.05, limit_entry_price - sl_amount))
+                                            sl_limit_price = round_to_tick(max(0.05, sl_trigger_price - entry_offset))
+
+                                        logging.info(f"🛡️ [MATCHING SL ORDER] Submitting SL Order for {trd_sym} {sl_tx_type} Qty={qty} Trigger=₹{sl_trigger_price} Limit=₹{sl_limit_price}")
+                                        res_sl = execute_single_order(SESSION["client"], {
+                                            "exchange_segment": segment,
+                                            "trading_symbol": trd_sym,
+                                            "transaction_type": sl_tx_type,
+                                            "product": "MIS",
+                                            "order_type": "SL",
+                                            "price": str(sl_limit_price),
+                                            "trigger_price": str(sl_trigger_price),
+                                            "quantity": qty,
+                                            "tag": "trade_bots_sl_order"
+                                        })
+                                        sl_oid = res_sl.get("order_id") if isinstance(res_sl, dict) else None
+                                        if sl_oid:
+                                            order_ids.append(f"SL:{sl_oid}")
+                                    elif not is_sl_enabled:
+                                        logging.info(f"ℹ️ [NO SL CONFIGURED] Skipping Stop Loss order placement for {trd_sym} (SL not configured or disabled in strategy)")
+
 
                             except Exception as ex:
                                 logging.error(f"[!] Strategy Limit Entry / SL Order Error: {ex}")
