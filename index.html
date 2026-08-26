@@ -234,34 +234,30 @@
             text-transform: uppercase;
         }
 
-        .trade-mode-toggle {
+        .real-trade-badge {
             display: flex;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 30px;
-            padding: 3px;
-        }
-
-        .mode-btn {
-            border: none;
-            background: transparent;
-            color: #94a3b8;
-            padding: 4px 12px;
-            font-size: 0.75rem;
-            font-weight: 700;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(220, 38, 38, 0.4));
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            color: #fca5a5;
+            padding: 5px 14px;
             border-radius: 20px;
-            cursor: pointer;
-            transition: var(--transition);
+            font-size: 0.75rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
         }
 
-        .mode-btn.active.real {
-            background: var(--accent-red);
-            color: #ffffff;
-            box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+        .real-trade-badge i {
+            color: #ef4444;
+            font-size: 0.7rem;
+            animation: pulse-red 2s infinite;
         }
 
-        .mode-btn.active.demo {
-            background: var(--accent-cyan);
-            color: #ffffff;
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.15); }
         }
 
         .cache-badge {
@@ -562,10 +558,8 @@
                     <span id="headerDate">SUN, 16 AUG</span>
                 </div>
 
-                <div class="trade-mode-toggle">
-                    <button class="mode-btn" id="btnDemoMode" onclick="setTradeMode('DEMO')">DEMO TRADE</button>
-                    <button class="mode-btn active real" id="btnRealMode" onclick="setTradeMode('REAL')">REAL
-                        TRADE</button>
+                <div class="real-trade-badge" title="Environment: Production (Real Trading)">
+                    <i class="fa-solid fa-bolt"></i> REAL TRADE (PROD)
                 </div>
 
                 <div class="cache-badge" id="sessionBadge">
@@ -1409,9 +1403,7 @@
         }
 
         function setTradeMode(mode) {
-            currentTradeMode = mode;
-            document.getElementById('btnDemoMode').className = `mode-btn ${mode === 'DEMO' ? 'active demo' : ''}`;
-            document.getElementById('btnRealMode').className = `mode-btn ${mode === 'REAL' ? 'active real' : ''}`;
+            currentTradeMode = 'REAL';
         }
 
         function switchView(viewId, el) {
@@ -2006,7 +1998,7 @@
                 sl: calculatedSL,
                 strike_selection: calculatedStrike,
                 legs: strategyLegs,
-                trade_mode: currentTradeMode
+                trade_mode: 'REAL'
             };
 
 

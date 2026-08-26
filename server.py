@@ -166,7 +166,9 @@ def load_strategies():
             try:
                 with open(STRATEGIES_FILE, "r") as f:
                     STRATEGIES = json.load(f)
-                    logging.info(f"[+] Loaded {len(STRATEGIES)} strategies from {STRATEGIES_FILE}")
+                    for s in STRATEGIES:
+                        s["trade_mode"] = "REAL"
+                    logging.info(f"[+] Loaded {len(STRATEGIES)} strategies from {STRATEGIES_FILE} (Enforced REAL Trade Mode)")
             except Exception as e:
                 logging.error(f"[!] Error reading {STRATEGIES_FILE}: {e}")
                 STRATEGIES = []
@@ -524,7 +526,7 @@ def background_strategy_scheduler():
                                         limit_entry_price = round_to_tick(max(0.05, ltp_val - entry_offset))
 
                                     # 1. Submit Limit Entry Order (order_type="L") via Kotak SDK
-                                    logging.info(f"🚀 [LIMIT ENTRY ORDER] Submitting Limit Order for {trd_sym} {tx_type} Qty={qty} @ Price=₹{limit_entry_price} (LTP=₹{ltp_val}, Offset={entry_offset:.2f})")
+                                    logging.info(f"🚀 [REAL LIMIT ENTRY ORDER] Submitting Limit Order for {trd_sym} {tx_type} Qty={qty} @ Price=₹{limit_entry_price} (LTP=₹{ltp_val}, Offset={entry_offset:.2f})")
                                     res_entry = execute_single_order(SESSION["client"], {
                                         "exchange_segment": segment,
                                         "trading_symbol": trd_sym,
@@ -568,7 +570,7 @@ def background_strategy_scheduler():
                                             sl_trigger_price = round_to_tick(max(0.05, limit_entry_price - sl_amount))
                                             sl_limit_price = round_to_tick(max(0.05, sl_trigger_price - entry_offset))
 
-                                        logging.info(f"🛡️ [MATCHING SL ORDER] Submitting SL Order for {trd_sym} {sl_tx_type} Qty={qty} Trigger=₹{sl_trigger_price} Limit=₹{sl_limit_price}")
+                                        logging.info(f"🛡️ [REAL SL ORDER] Submitting SL Order for {trd_sym} {sl_tx_type} Qty={qty} Trigger=₹{sl_trigger_price} Limit=₹{sl_limit_price}")
                                         res_sl = execute_single_order(SESSION["client"], {
                                             "exchange_segment": segment,
                                             "trading_symbol": trd_sym,
@@ -589,6 +591,10 @@ def background_strategy_scheduler():
 
                             except Exception as ex:
                                 logging.error(f"[!] Strategy Limit Entry / SL Order Error: {ex}")
+                        else:
+                            warn_msg = f"⚠️ [REAL TRADE WARNING] Broker session NOT connected! Real order placement skipped for '{strat.get('symbol')}'. Please connect Kotak Neo 2FA session."
+                            logging.warning(warn_msg)
+                            add_system_console_log(warn_msg, category="BROKER")
 
                         strat["status"] = "ACTIVE"
                         PREWARM_ACTIVE[strat_id] = False
@@ -756,7 +762,7 @@ def login_broker():
     mpin = str(data.get("mpin", "")).strip()
     totp = str(data.get("totp", "")).strip()
     totp_secret = str(data.get("totp_secret", "")).strip()
-    environment = str(data.get("environment", "prod")).strip().lower()
+    environment = "prod"
 
     if not consumer_key or not mobile_number or not ucc or not mpin:
         return jsonify({"success": False, "error": "Consumer Key, Mobile Number, UCC, and MPIN are required."}), 400
@@ -1006,7 +1012,7 @@ def add_strategy():
         "sl": str(data.get("sl", "2 Pts")),
         "strike_selection": str(data.get("strike_selection", "Premium closest to 3")),
         "legs": data.get("legs", []),
-        "trade_mode": str(data.get("trade_mode", "REAL")).upper(),
+        "trade_mode": "REAL",
         "status": "IDLE",
         "pnl": "₹0.00",
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1057,6 +1063,7 @@ def update_strategy():
                 s["sl"] = str(data.get("sl", s.get("sl", "2 Pts")))
                 s["strike_selection"] = str(data.get("strike_selection", s.get("strike_selection", "Premium closest to 3")))
                 s["legs"] = data.get("legs", s.get("legs", []))
+                s["trade_mode"] = "REAL"
                 s["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 save_strategies()
                 return jsonify({"success": True, "message": "Strategy updated successfully!", "strategy": s})
