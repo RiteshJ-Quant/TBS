@@ -745,8 +745,26 @@
 
                     <div class="form-grid">
                         <div class="form-group">
+                            <label>Exchange Segment</label>
+                            <select id="oms_segment" class="form-control">
+                                <option value="nse_cm">NSE Cash (nse_cm)</option>
+                                <option value="nse_fo">NSE F&O (nse_fo)</option>
+                                <option value="bse_cm">BSE Cash (bse_cm)</option>
+                                <option value="bse_fo">BSE F&O (bse_fo)</option>
+                                <option value="mcx_fo">MCX F&O (mcx_fo)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Product</label>
+                            <select id="oms_product" class="form-control">
+                                <option value="CNC">CNC (Cash Delivery)</option>
+                                <option value="NRML">NRML (F&O Carryforward)</option>
+                                <option value="MIS">MIS (Intraday)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label>Symbol</label>
-                            <input type="text" id="oms_symbol" class="form-control" value="SBIN-EQ">
+                            <input type="text" id="oms_symbol" class="form-control" value="SBIN-EQ" placeholder="e.g. SBIN-EQ or NIFTY26AUG24500PE">
                         </div>
                         <div class="form-group">
                             <label>Transaction Side</label>
@@ -2185,11 +2203,25 @@
         }
 
         async function handleOMSPlaceOrder() {
+            const sym = (document.getElementById('oms_symbol').value || '').trim().toUpperCase();
+            let seg = document.getElementById('oms_segment') ? document.getElementById('oms_segment').value : 'nse_cm';
+            let prod = document.getElementById('oms_product') ? document.getElementById('oms_product').value : 'CNC';
+
+            // Auto-detect options/derivatives if user enters option symbol or CE/PE
+            if (sym.endsWith('CE') || sym.endsWith('PE') || sym.includes('OPT') || seg.includes('fo')) {
+                if (seg === 'nse_cm' || seg === 'bse_cm') {
+                    seg = (sym.startsWith('SENSEX') || sym.startsWith('BANKEX')) ? 'bse_fo' : 'nse_fo';
+                }
+                if (prod === 'CNC') {
+                    prod = 'NRML';
+                }
+            }
+
             const payload = {
-                exchange_segment: 'nse_cm',
-                trading_symbol: document.getElementById('oms_symbol').value,
+                exchange_segment: seg,
+                trading_symbol: sym,
                 transaction_type: document.getElementById('oms_side').value,
-                product: 'CNC',
+                product: prod,
                 order_type: document.getElementById('oms_type').value,
                 quantity: document.getElementById('oms_qty').value,
                 price: '0',

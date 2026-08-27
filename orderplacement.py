@@ -90,13 +90,30 @@ def place_broker_order(client, payload: dict):
     else:
         tx_type = raw_tx_type
 
+    exchange_segment = str(payload.get("exchange_segment", "nse_cm")).strip().lower()
+    trading_symbol = str(payload.get("trading_symbol", "")).strip().upper()
+    product = str(payload.get("product", "CNC")).strip().upper()
+
+    # Auto-detect options/derivatives to prevent "Error from core" due to invalid exchange_segment or product code
+    is_option_symbol = (
+        trading_symbol.endswith("CE") or 
+        trading_symbol.endswith("PE") or 
+        "OPT" in trading_symbol or 
+        exchange_segment in ["nse_fo", "bse_fo", "cde_fo", "mcx_fo"]
+    )
+    if is_option_symbol:
+        if exchange_segment in ["nse_cm", "bse_cm", ""]:
+            exchange_segment = "bse_fo" if ("SENSEX" in trading_symbol or "BANKEX" in trading_symbol) else "nse_fo"
+        if product in ["CNC", ""]:
+            product = "NRML"
+
     print("\n==================================================")
     print("           PLACING ORDER VIA KOTAK NEO            ")
     print("==================================================")
-    print(f"  Exchange Segment : {payload.get('exchange_segment')}")
-    print(f"  Trading Symbol   : {payload.get('trading_symbol')}")
+    print(f"  Exchange Segment : {exchange_segment}")
+    print(f"  Trading Symbol   : {trading_symbol}")
     print(f"  Transaction Type : {tx_type}")
-    print(f"  Product          : {payload.get('product')}")
+    print(f"  Product          : {product}")
     print(f"  Order Type       : {payload.get('order_type')}")
     print(f"  Quantity         : {payload.get('quantity')}")
     print(f"  Price            : {payload.get('price')}")
@@ -108,8 +125,8 @@ def place_broker_order(client, payload: dict):
 
     try:
         response = client.place_order(
-            exchange_segment=payload["exchange_segment"],
-            product=payload["product"],
+            exchange_segment=exchange_segment,
+            product=product,
             price=str(payload["price"]),
             order_type=payload["order_type"],
             quantity=str(payload["quantity"]),

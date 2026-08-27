@@ -244,6 +244,19 @@ def execute_single_order(client, payload: dict) -> dict:
     pf = str(payload.get("pf", "N")).strip().upper()
     tag = str(payload.get("tag", "trade_bots")).strip()
 
+    # Auto-detect options/derivatives to prevent "Error from core" due to invalid exchange_segment or product code
+    is_option_symbol = (
+        trading_symbol.endswith("CE") or 
+        trading_symbol.endswith("PE") or 
+        "OPT" in trading_symbol or 
+        exchange_segment in ["nse_fo", "bse_fo", "cde_fo", "mcx_fo"]
+    )
+    if is_option_symbol:
+        if exchange_segment in ["nse_cm", "bse_cm", ""]:
+            exchange_segment = "bse_fo" if ("SENSEX" in trading_symbol or "BANKEX" in trading_symbol) else "nse_fo"
+        if product in ["CNC", ""]:
+            product = "NRML"
+
     if transaction_type in ["BUY", "B"]:
         tx_type = "B"
     elif transaction_type in ["SELL", "S"]:
@@ -1738,9 +1751,9 @@ def calculate_option_strike(symbol: str, opt_type: str, criteria: str, spot_pric
     crit_str = str(criteria).upper()
 
     # Determine CE vs PE if embedded in criteria string (e.g. "Sell Call OTM1", "Buy Put OTM2")
-    if "CALL" in crit_str or "CE" in crit_str:
+    if re.search(r'\b(CALL|CE)\b', crit_str):
         is_ce = True
-    elif "PUT" in crit_str or "PE" in crit_str:
+    elif re.search(r'\b(PUT|PE)\b', crit_str):
         is_ce = False
     else:
         is_ce = opt_type_str in ["CALL", "CE", "C"]
@@ -2034,10 +2047,10 @@ def calculate_option_strike(symbol: str, opt_type: str, criteria: str, spot_pric
     opt_type_str = str(opt_type).upper()
     crit_str = str(criteria).upper()
 
-    if "CALL" in crit_str or "CE" in crit_str:
+    if re.search(r'\b(CALL|CE)\b', crit_str):
         opt_type_clean = "CE"
         is_ce = True
-    elif "PUT" in crit_str or "PE" in crit_str:
+    elif re.search(r'\b(PUT|PE)\b', crit_str):
         opt_type_clean = "PE"
         is_ce = False
     else:
