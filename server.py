@@ -602,7 +602,7 @@ def background_strategy_scheduler():
                                     offset_val = float(APP_SETTINGS.get("offset_value", 0.5))
                                     offset_type = str(APP_SETTINGS.get("offset_type", "Points (₹)"))
 
-                                for c in contracts:
+                                for idx, c in enumerate(contracts):
                                     trd_sym = c.get("trading_symbol") or c.get("contract_symbol")
                                     raw_tx = str(c.get("transaction_type", "S")).strip().upper()
                                     tx_type = "B" if raw_tx in ["BUY", "B"] else "S"
@@ -644,6 +644,20 @@ def background_strategy_scheduler():
 
                                     if is_entry_success:
                                         order_ids.append(f"LIMIT_ENTRY:{entry_oid or 'CONFIRMED'}")
+                                        executed_contracts = strat.setdefault("executed_contracts", {})
+                                        exec_info = {
+                                            "leg_idx": idx,
+                                            "strike": c.get("strike_num") or c.get("strike"),
+                                            "contract_symbol": c.get("contract_symbol"),
+                                            "trading_symbol": trd_sym,
+                                            "token": c.get("token"),
+                                            "segment": segment,
+                                            "entry_price": limit_entry_price,
+                                            "status": "EXECUTED",
+                                            "entry_time": current_hhmm
+                                        }
+                                        executed_contracts[f"leg_{idx}"] = exec_info
+                                        executed_contracts[trd_sym] = exec_info
 
                                     # 2. Check if Stop Loss (SL) is explicitly configured and enabled in strategy / contract
                                     is_sl_enabled, sl_val, sl_mode = extract_sl_config(strat, c)
@@ -2288,15 +2302,35 @@ def get_strategy_tracker_contracts(strat):
     contracts = []
     total_strat_pnl = 0.0
 
-    def process_contract(opt_type, criteria, lots, default_tx="S", leg_sl_obj=None, leg_tgt_obj=None, target_val=None):
+    def process_contract(opt_type, criteria, lots, default_tx="S", leg_sl_obj=None, leg_tgt_obj=None, target_val=None, leg_idx=None):
         nonlocal total_strat_pnl
-        strike = calculate_option_strike(symbol, opt_type, criteria, spot_price=spot_price, target_val=target_val)
-        contract_sym = f"{symbol}26804{strike}{opt_type}"
-        
-        opt_info = lookup_option_contract_token(symbol, strike, opt_type)
-        token = opt_info.get("token") if opt_info else None
-        trd_sym = opt_info.get("trading_symbol") if opt_info else contract_sym
-        segment = opt_info.get("segment") if opt_info else ("bse_fo" if symbol in ["SENSEX", "BANKEX"] else "nse_fo")
+
+        # Check if contract was ALREADY executed and locked for this leg index
+        leg_key = f"leg_{leg_idx}" if leg_idx is not None else None
+        exec_info = (executed_contracts.get(leg_key) if leg_key else None) or None
+
+        if not exec_info and isinstance(executed_contracts, dict):
+            for k, info in executed_contracts.items():
+                if isinstance(info, dict) and info.get("leg_idx") == leg_idx and info.get("strike"):
+                    exec_info = info
+                    break
+
+        if exec_info and exec_info.get("strike"):
+            # Use LOCKED contract parameters from execution
+            strike = exec_info.get("strike")
+            contract_sym = exec_info.get("contract_symbol", f"{symbol}26804{strike}{opt_type}")
+            trd_sym = exec_info.get("trading_symbol", contract_sym)
+            token = exec_info.get("token")
+            segment = exec_info.get("segment", "bse_fo" if symbol in ["SENSEX", "BANKEX"] else "nse_fo")
+            opt_info = lookup_option_contract_token(symbol, strike, opt_type) if not token else {"token": token, "trading_symbol": trd_sym, "segment": segment}
+        else:
+            # Dynamically calculate strike for unexecuted leg
+            strike = calculate_option_strike(symbol, opt_type, criteria, spot_price=spot_price, target_val=target_val)
+            contract_sym = f"{symbol}26804{strike}{opt_type}"
+            opt_info = lookup_option_contract_token(symbol, strike, opt_type)
+            token = opt_info.get("token") if opt_info else None
+            trd_sym = opt_info.get("trading_symbol") if opt_info else contract_sym
+            segment = opt_info.get("segment") if opt_info else ("bse_fo" if symbol in ["SENSEX", "BANKEX"] else "nse_fo")
 
         if token and SESSION.get("client"):
             register_token_aliases(token, trd_sym, contract_sym, f"{symbol}{strike}{opt_type}")
@@ -2304,15 +2338,25 @@ def get_strategy_tracker_contracts(strat):
 
         ltp_val = get_option_contract_ltp(token, trd_sym, contract_sym)
 
-        # Check execution state
-        exec_info = executed_contracts.get(trd_sym)
+        # Check / Initialize execution state
+        if not exec_info:
+            exec_info = executed_contracts.get(trd_sym)
+
         if not exec_info and has_entered:
             init_entry = ltp_val if ltp_val > 0 else (48.70 if opt_type == "PE" else 79.70)
             exec_info = {
+                "leg_idx": leg_idx,
+                "strike": strike,
+                "contract_symbol": contract_sym,
+                "trading_symbol": trd_sym,
+                "token": token,
+                "segment": segment,
                 "entry_price": init_entry,
                 "status": "EXECUTED",
                 "entry_time": current_hhmm
             }
+            if leg_key:
+                executed_contracts[leg_key] = exec_info
             executed_contracts[trd_sym] = exec_info
 
         entry_price = exec_info["entry_price"] if (exec_info and has_entered) else None
@@ -2452,15 +2496,15 @@ def get_strategy_tracker_contracts(strat):
             leg_sl = leg.get("stop_loss")
             leg_tgt = leg.get("target_profit")
 
-            contracts.append(process_contract(opt_type, criteria, lots, tx_type, leg_sl, leg_tgt, target_val))
+            contracts.append(process_contract(opt_type, criteria, lots, tx_type, leg_sl, leg_tgt, target_val, leg_idx=idx))
     else:
         strike_sel = str(strat.get("strike_selection", "Sell Call OTM1")).upper()
         parts = [p.strip() for p in strike_sel.split("|") if p.strip()]
-        for p in parts:
+        for idx, p in enumerate(parts):
             is_ce = ("CALL" in p or "CE" in p)
             opt_type = "CE" if is_ce else "PE"
             tx_type = "S" if ("SELL" in p or "SHORT" in p) else "B"
-            contracts.append(process_contract(opt_type, p, int(strat.get("lots", 1)), tx_type, None, None, None))
+            contracts.append(process_contract(opt_type, p, int(strat.get("lots", 1)), tx_type, None, None, None, leg_idx=idx))
 
     # Update overall strategy PnL
     strat["pnl"] = f"₹{total_strat_pnl:+.2f}"
