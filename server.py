@@ -705,14 +705,16 @@ def background_strategy_scheduler():
                     # -------------------------------------------------------------
                     if exit_time and ":" in exit_time:
                         try:
-                            exit_h, exit_m = map(int, exit_time.split(":"))
+                            exit_parts = exit_time.split(":")
+                            exit_h, exit_m = int(exit_parts[0]), int(exit_parts[1])
                             exit_dt = datetime(now.year, now.month, now.day, exit_h, exit_m, 0)
                             time_to_exit = (exit_dt - now).total_seconds()
                             exit_key = f"{strat_id}_{today_str}_{exit_time}"
 
-                            if status == "ACTIVE" and (exit_key not in executed_exits) and (time_to_exit <= 0) and (time_to_exit >= -300):
+                            if status in ["ACTIVE", "RUNNING", "PREWARMING"] and (exit_key not in executed_exits) and (time_to_exit <= 0) and (time_to_exit >= -300):
                                 executed_exits.add(exit_key)
-                                logging.info(f"⏰ [TRADE BOTS EXIT] Executing Strategy Exit '{strat.get('symbol')}' at {now.strftime('%H:%M:%S')}")
+                                logging.info(f"⏰ [TRADE BOTS EXIT] Executing Strategy Exit '{strat.get('symbol')}' at {now.strftime('%H:%M:%S')} (Scheduled: {exit_time})")
+                                exit_ids = []
                                 if SESSION.get("logged_in") and SESSION.get("client"):
                                     try:
                                         # Fetch live order report from broker to verify if any SL orders were already filled
@@ -727,9 +729,12 @@ def background_strategy_scheduler():
                                             logging.warning(f"⚠️ [ORDER REPORT WARN] Could not fetch broker order report prior to exit: {oex}")
 
                                         contracts = get_strategy_tracker_contracts(strat)
+                                        executed_contracts = strat.setdefault("executed_contracts", {})
+
                                         for c in contracts:
                                             trd_sym = c.get("contract_symbol") or c.get("trading_symbol")
-                                            leg_status = str(c.get("status", "")).upper()
+                                            exec_info = executed_contracts.get(trd_sym) or {}
+                                            leg_saved_status = str(exec_info.get("status", "")).upper()
 
                                             # Check if broker order report shows SL order for this symbol was TRADED/COMPLETE
                                             sl_already_traded = False
@@ -748,11 +753,10 @@ def background_strategy_scheduler():
                                                         if "SL" in bo_type:
                                                             open_sl_order_id = bo_id
 
-                                            if leg_status in ["STOPLOSS HIT", "SL_HIT", "EXITED", "TARGET_HIT"] or sl_already_traded:
-                                                logging.info(f"ℹ️ [EXIT SKIPPED] Leg {trd_sym} already closed (Status: '{leg_status}', Broker SL Traded: {sl_already_traded}). Skipping exit order.")
-                                                executed_contracts = strat.setdefault("executed_contracts", {})
+                                            if leg_saved_status in ["STOPLOSS HIT", "SL_HIT", "TARGET_HIT"] or sl_already_traded:
+                                                logging.info(f"ℹ️ [EXIT SKIPPED] Leg {trd_sym} already closed (Saved Status: '{leg_saved_status}', Broker SL Traded: {sl_already_traded}). Skipping exit order.")
                                                 if trd_sym in executed_contracts:
-                                                    executed_contracts[trd_sym]["status"] = "STOPLOSS HIT" if sl_already_traded else leg_status
+                                                    executed_contracts[trd_sym]["status"] = "STOPLOSS HIT" if sl_already_traded else leg_saved_status
                                                 continue
 
                                             # If SL order is still open/pending at broker, cancel it first before closing market position
@@ -780,6 +784,10 @@ def background_strategy_scheduler():
                                             oid = res.get("order_id") if isinstance(res, dict) else None
                                             if oid:
                                                 exit_ids.append(str(oid))
+                                            
+                                            # Update leg status to EXITED
+                                            if trd_sym in executed_contracts:
+                                                executed_contracts[trd_sym]["status"] = "EXITED"
                                     except Exception as ex:
                                         logging.error(f"[!] Strategy Exit Error: {ex}")
 
@@ -2273,8 +2281,8 @@ def get_strategy_tracker_contracts(strat):
     # Strategy is ONLY entered if status is ACTIVE/COMPLETED or if (status == RUNNING and current_hhmm >= entry_time)
     has_entered = (strat_status in ["ACTIVE", "COMPLETED"]) or (strat_status == "RUNNING" and current_hhmm >= entry_time)
 
-    # Strategy is EXITED if status is COMPLETED or (status == ACTIVE and current_hhmm >= exit_time)
-    has_exited = (strat_status == "COMPLETED") or (strat_status == "ACTIVE" and current_hhmm >= exit_time)
+    # Strategy is EXITED if status is COMPLETED
+    has_exited = (strat_status == "COMPLETED")
 
     executed_contracts = strat.setdefault("executed_contracts", {})
     contracts = []
