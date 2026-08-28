@@ -242,7 +242,8 @@ def execute_single_order(client, payload: dict) -> dict:
     disclosed_quantity = str(payload.get("disclosed_quantity", "0")).strip()
     market_protection = str(payload.get("market_protection", "0")).strip()
     pf = str(payload.get("pf", "N")).strip().upper()
-    tag = str(payload.get("tag", "trade_bots")).strip()
+    raw_tag = str(payload.get("tag") or "trade_bots").strip()
+    tag = f"{raw_tag}_{int(time.time() * 1000)}_{uuid.uuid4().hex[:4]}"
 
     # Auto-detect options/derivatives to prevent "Error from core" due to invalid exchange_segment or product code
     is_option_symbol = (

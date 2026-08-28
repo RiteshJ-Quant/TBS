@@ -19,6 +19,8 @@ API Specification Reference:
 
 import os
 import sys
+import time
+import uuid
 
 # Ensure local SDK 'Kotak-neo-api-v2' is in sys.path
 sdk_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Kotak-neo-api-v2")
@@ -123,6 +125,9 @@ def place_broker_order(client, payload: dict):
         print(f"  Trigger Price    : {payload.get('trigger_price')}")
     print("==================================================")
 
+    raw_tag = str(payload.get("tag") or "py_order").strip()
+    unique_tag = f"{raw_tag}_{int(time.time() * 1000)}_{uuid.uuid4().hex[:4]}"
+
     try:
         response = client.place_order(
             exchange_segment=exchange_segment,
@@ -131,14 +136,14 @@ def place_broker_order(client, payload: dict):
             order_type=payload["order_type"],
             quantity=str(payload["quantity"]),
             validity=payload["validity"],
-            trading_symbol=payload["trading_symbol"],
+            trading_symbol=trading_symbol,
             transaction_type=tx_type,
             amo=payload.get("amo", "NO"),
             disclosed_quantity=str(payload.get("disclosed_quantity", "0")),
             market_protection=str(payload.get("market_protection", "0")),
             pf=payload.get("pf", "N"),
             trigger_price=str(payload.get("trigger_price", "0")),
-            tag=payload.get("tag", "python_order")
+            tag=unique_tag
         )
 
         print("\n[*] Broker API Response:")
