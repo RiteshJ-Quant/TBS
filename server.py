@@ -227,6 +227,83 @@ def round_to_tick(price: float, tick_size: float = 0.05) -> float:
     return round(round(price / tick_size) * tick_size, 2)
 
 
+def extract_sl_config(strat: dict = None, leg: dict = None):
+    """
+    Extracts SL configuration (is_enabled, sl_val, sl_mode) from leg or strategy.
+    sl_mode can be 'PERCENT' or 'POINTS'.
+    """
+    if strat is None:
+        strat = {}
+    if leg is None:
+        leg = {}
+
+    # 1. Check leg.stop_loss dictionary if present
+    leg_sl_dict = leg.get("stop_loss") if isinstance(leg, dict) else None
+    if isinstance(leg_sl_dict, dict):
+        enabled = bool(leg_sl_dict.get("enabled", True))
+        try:
+            val = float(leg_sl_dict.get("val", 0))
+        except (ValueError, TypeError):
+            val = 0.0
+        sl_type = str(leg_sl_dict.get("type", "Pts")).strip()
+        if enabled and val > 0:
+            is_percent = ("%" in sl_type or "Percent" in sl_type or "percent" in sl_type)
+            return True, val, "PERCENT" if is_percent else "POINTS"
+
+    # 2. Check leg or strategy string/numeric SL fields
+    sl_candidates = [
+        leg.get("sl") if isinstance(leg, dict) else None,
+        leg.get("stop_loss") if isinstance(leg, dict) and not isinstance(leg.get("stop_loss"), dict) else None,
+        strat.get("sl") if isinstance(strat, dict) else None,
+        strat.get("overall_sl") if isinstance(strat, dict) else None
+    ]
+
+    for raw in sl_candidates:
+        if raw is None or raw is False:
+            continue
+        sl_str = str(raw).strip()
+        if not sl_str or sl_str.upper() in ["NONE", "DISABLED", "OFF", "0", "0 PTS", "0.0", "0%", "0.0 PTS"]:
+            continue
+
+        is_percent = ("%" in sl_str or "Percent" in sl_str or "percent" in sl_str or "PERCENT" in sl_str)
+        matches = re.findall(r"[-+]?\d*\.\d+|\d+", sl_str)
+        if matches:
+            try:
+                val = float(matches[0])
+                if val > 0:
+                    return True, val, "PERCENT" if is_percent else "POINTS"
+            except ValueError:
+                pass
+
+    return False, 0.0, "POINTS"
+
+
+def calculate_sl_prices(entry_price: float, tx_type: str, sl_val: float, sl_mode: str, offset_val: float = 0.5):
+    """
+    Calculates Stop Loss trigger price and limit price based on Entry Price, Transaction Type (B/S),
+    SL Value (Percent or Points), and trigger_limit_diff offset.
+    Returns: (sl_tx_type, sl_trigger_price, sl_limit_price)
+    """
+    if sl_mode == "PERCENT":
+        sl_amount = entry_price * (sl_val / 100.0)
+    else:
+        sl_amount = sl_val
+
+    tx_type_upper = str(tx_type).strip().upper()
+    if tx_type_upper in ["BUY", "B"]:
+        # Entry is BUY -> Stop Loss order is SELL
+        sl_tx_type = "S"
+        sl_trigger_price = round_to_tick(max(0.05, entry_price - sl_amount))
+        sl_limit_price = round_to_tick(max(0.05, sl_trigger_price - offset_val))
+    else:
+        # Entry is SELL -> Stop Loss order is BUY
+        sl_tx_type = "B"
+        sl_trigger_price = round_to_tick(entry_price + sl_amount)
+        sl_limit_price = round_to_tick(sl_trigger_price + offset_val)
+
+    return sl_tx_type, sl_trigger_price, sl_limit_price
+
+
 def execute_single_order(client, payload: dict) -> dict:
     """Helper to place an order via Kotak Neo API client."""
     exchange_segment = str(payload.get("exchange_segment", "nse_cm")).strip().lower()
@@ -296,15 +373,26 @@ def execute_single_order(client, payload: dict) -> dict:
 
     if isinstance(response, dict):
         stat = str(response.get("stat") or response.get("status") or "").strip()
-        order_id = response.get("order_id") or response.get("nOrderNo") or response.get("result") or response.get("data", {}).get("order_id")
-        err_msg = response.get("errMsg") or response.get("message") or response.get("reason") or response.get("error")
+        raw_data = response.get("data") if isinstance(response.get("data"), dict) else {}
+        order_id = (
+            response.get("order_id") or 
+            response.get("nOrderNo") or 
+            response.get("result") or 
+            raw_data.get("order_id") or 
+            raw_data.get("nOrderNo")
+        )
+        if order_id:
+            order_id = str(order_id).strip()
+        err_msg = response.get("errMsg") or response.get("message") or response.get("reason") or response.get("error") or raw_data.get("message")
 
     tx_str = "BUY" if tx_type == "B" else ("SELL" if tx_type == "S" else tx_type)
     
     # Check if order was successfully accepted by broker
     is_success = bool(order_id) or (stat in ["Ok", "success", "OK", "0"])
+    if is_success and not order_id:
+        order_id = f"CONFIRMED_{int(time.time()*1000)}"
 
-    if is_success and order_id:
+    if is_success:
         if order_type == "SL":
             log_msg = f"🛡️ [SL ORDER SUBMITTED] {trading_symbol} {tx_str} Qty={quantity} Trigger=₹{trigger_price} Limit=₹{price} (Order ID: {order_id})"
             add_system_console_log(log_msg, category="SL_ORDER")
@@ -551,40 +639,26 @@ def background_strategy_scheduler():
                                         "quantity": qty,
                                         "tag": "trade_bots_limit_entry"
                                     })
+                                    is_entry_success = bool(res_entry.get("success")) if isinstance(res_entry, dict) else False
                                     entry_oid = res_entry.get("order_id") if isinstance(res_entry, dict) else None
-                                    if entry_oid:
-                                        order_ids.append(f"LIMIT_ENTRY:{entry_oid}")
+
+                                    if is_entry_success:
+                                        order_ids.append(f"LIMIT_ENTRY:{entry_oid or 'CONFIRMED'}")
 
                                     # 2. Check if Stop Loss (SL) is explicitly configured and enabled in strategy / contract
-                                    sl_raw = strat.get("sl") if strat.get("sl") is not None else c.get("sl")
-                                    sl_str = str(sl_raw).strip() if sl_raw is not None else ""
-
-                                    is_sl_enabled = False
-                                    sl_val = 0.0
-                                    if sl_str and sl_str.upper() not in ["NONE", "DISABLED", "OFF", "0", "0 PTS", "0.0", "0%", "0.0 PTS"]:
-                                        sl_matches = re.findall(r"[-+]?\d*\.\d+|\d+", sl_str)
-                                        if sl_matches and float(sl_matches[0]) > 0:
-                                            is_sl_enabled = True
-                                            sl_val = float(sl_matches[0])
+                                    is_sl_enabled, sl_val, sl_mode = extract_sl_config(strat, c)
 
                                     # Only submit matching SL Order if SL is enabled AND entry order was accepted by broker
-                                    if is_sl_enabled and entry_oid:
-                                        if "%" in sl_str or "Percent" in sl_str:
-                                            sl_amount = limit_entry_price * (sl_val / 100.0)
-                                        else:
-                                            sl_amount = sl_val
+                                    if is_sl_enabled and is_entry_success:
+                                        sl_tx_type, sl_trigger_price, sl_limit_price = calculate_sl_prices(
+                                            entry_price=limit_entry_price,
+                                            tx_type=tx_type,
+                                            sl_val=sl_val,
+                                            sl_mode=sl_mode,
+                                            offset_val=entry_offset
+                                        )
 
-                                        # Calculate SL trigger price and limit price with margin diff (rounded to tick 0.05)
-                                        if tx_type == "S":
-                                            sl_tx_type = "B"
-                                            sl_trigger_price = round_to_tick(limit_entry_price + sl_amount)
-                                            sl_limit_price = round_to_tick(sl_trigger_price + entry_offset)
-                                        else:
-                                            sl_tx_type = "S"
-                                            sl_trigger_price = round_to_tick(max(0.05, limit_entry_price - sl_amount))
-                                            sl_limit_price = round_to_tick(max(0.05, sl_trigger_price - entry_offset))
-
-                                        logging.info(f"🛡️ [REAL SL ORDER] Submitting SL Order for {trd_sym} {sl_tx_type} Qty={qty} Trigger=₹{sl_trigger_price} Limit=₹{sl_limit_price}")
+                                        logging.info(f"🛡️ [REAL SL ORDER SUBMISSION] Submitting matching SL Order for {trd_sym} {sl_tx_type} Qty={qty} | Entry=₹{limit_entry_price} -> Trigger=₹{sl_trigger_price} Limit=₹{sl_limit_price} (SL={sl_val} {sl_mode})")
                                         res_sl = execute_single_order(SESSION["client"], {
                                             "exchange_segment": segment,
                                             "trading_symbol": trd_sym,
@@ -594,13 +668,17 @@ def background_strategy_scheduler():
                                             "price": str(sl_limit_price),
                                             "trigger_price": str(sl_trigger_price),
                                             "quantity": qty,
-                                            "tag": "trade_bots_sl_order"
+                                            "tag": f"trade_bots_sl_{entry_oid or 'order'}"
                                         })
                                         sl_oid = res_sl.get("order_id") if isinstance(res_sl, dict) else None
                                         if sl_oid:
                                             order_ids.append(f"SL:{sl_oid}")
+                                        else:
+                                            logging.warning(f"⚠️ [SL SUBMISSION RESPONSE] SL order response: {res_sl}")
                                     elif not is_sl_enabled:
                                         logging.info(f"ℹ️ [NO SL CONFIGURED] Skipping Stop Loss order placement for {trd_sym} (SL not configured or disabled in strategy)")
+                                    else:
+                                        logging.warning(f"⚠️ [SL SKIPPED] Entry order for {trd_sym} was not accepted by broker. SL order skipped.")
 
 
                             except Exception as ex:
@@ -635,12 +713,56 @@ def background_strategy_scheduler():
                             if status == "ACTIVE" and (exit_key not in executed_exits) and (time_to_exit <= 0) and (time_to_exit >= -300):
                                 executed_exits.add(exit_key)
                                 logging.info(f"⏰ [TRADE BOTS EXIT] Executing Strategy Exit '{strat.get('symbol')}' at {now.strftime('%H:%M:%S')}")
-                                exit_ids = []
                                 if SESSION.get("logged_in") and SESSION.get("client"):
                                     try:
+                                        # Fetch live order report from broker to verify if any SL orders were already filled
+                                        broker_orders = []
+                                        try:
+                                            ord_rep = SESSION["client"].order_report()
+                                            if isinstance(ord_rep, dict) and isinstance(ord_rep.get("data"), list):
+                                                broker_orders = ord_rep["data"]
+                                            elif isinstance(ord_rep, list):
+                                                broker_orders = ord_rep
+                                        except Exception as oex:
+                                            logging.warning(f"⚠️ [ORDER REPORT WARN] Could not fetch broker order report prior to exit: {oex}")
+
                                         contracts = get_strategy_tracker_contracts(strat)
                                         for c in contracts:
                                             trd_sym = c.get("contract_symbol") or c.get("trading_symbol")
+                                            leg_status = str(c.get("status", "")).upper()
+
+                                            # Check if broker order report shows SL order for this symbol was TRADED/COMPLETE
+                                            sl_already_traded = False
+                                            open_sl_order_id = None
+                                            for bo in broker_orders:
+                                                bo_sym = str(bo.get("trading_symbol") or bo.get("trdSym") or "").strip()
+                                                bo_type = str(bo.get("order_type") or bo.get("ordSt") or "").strip().upper()
+                                                bo_stat = str(bo.get("status") or bo.get("ordSt") or bo.get("nStat") or "").strip().upper()
+                                                bo_id = bo.get("order_id") or bo.get("nOrderNo")
+
+                                                if bo_sym == trd_sym or bo_sym == c.get("trading_symbol"):
+                                                    if bo_stat in ["TRADED", "COMPLETE", "FILLED", "EXECUTED"]:
+                                                        if "SL" in bo_type or bo.get("tag") == "trade_bots_sl_order":
+                                                            sl_already_traded = True
+                                                    elif bo_stat in ["OPEN", "TRIGGER PENDING", "TRIGGER_PENDING", "PENDING"]:
+                                                        if "SL" in bo_type:
+                                                            open_sl_order_id = bo_id
+
+                                            if leg_status in ["STOPLOSS HIT", "SL_HIT", "EXITED", "TARGET_HIT"] or sl_already_traded:
+                                                logging.info(f"ℹ️ [EXIT SKIPPED] Leg {trd_sym} already closed (Status: '{leg_status}', Broker SL Traded: {sl_already_traded}). Skipping exit order.")
+                                                executed_contracts = strat.setdefault("executed_contracts", {})
+                                                if trd_sym in executed_contracts:
+                                                    executed_contracts[trd_sym]["status"] = "STOPLOSS HIT" if sl_already_traded else leg_status
+                                                continue
+
+                                            # If SL order is still open/pending at broker, cancel it first before closing market position
+                                            if open_sl_order_id:
+                                                try:
+                                                    logging.info(f"🧹 [CANCEL PENDING SL] Cancelling pending SL order {open_sl_order_id} for {trd_sym} prior to market exit.")
+                                                    SESSION["client"].cancel_order(order_id=open_sl_order_id)
+                                                except Exception as cex:
+                                                    logging.warning(f"⚠️ [SL CANCEL WARN] Failed to cancel pending SL order {open_sl_order_id}: {cex}")
+
                                             tx_type = "B" if c.get("transaction_type", "S") == "S" else "S"
                                             lot_sz = c.get("lot_size") or get_symbol_lot_size(c.get("symbol") or strat.get("symbol"), c)
                                             qty = str(c.get("quantity") or (int(c.get("lots", 1)) * lot_sz))
@@ -936,13 +1058,48 @@ def get_master_scrips_status():
 
 @app.route("/api/place_order", methods=["POST"])
 def place_order():
-    """Executes single order placement on Kotak Neo API v2."""
+    """Executes single order placement on Kotak Neo API v2, with auto-matching SL submission if configured."""
     if not SESSION["logged_in"] or not SESSION["client"]:
         return jsonify({"success": False, "error": "Not authenticated. Please log in first."}), 401
 
     data = request.json or {}
     try:
         res = execute_single_order(SESSION["client"], data)
+        # Check if matching Stop Loss order auto-submission was requested
+        is_sl_enabled, sl_val, sl_mode = extract_sl_config({}, data)
+        if res.get("success") and is_sl_enabled and data.get("order_type") != "SL":
+            entry_oid = res.get("order_id")
+            raw_tx = str(data.get("transaction_type", "B")).strip().upper()
+            tx_type = "B" if raw_tx in ["BUY", "B"] else "S"
+            entry_price = float(data.get("price") or 0.0)
+            if entry_price <= 0 and data.get("ltp"):
+                entry_price = float(data.get("ltp"))
+
+            if entry_price > 0:
+                with SETTINGS_LOCK:
+                    offset_val = float(APP_SETTINGS.get("offset_value", 0.5))
+
+                sl_tx_type, sl_trigger_price, sl_limit_price = calculate_sl_prices(
+                    entry_price=entry_price,
+                    tx_type=tx_type,
+                    sl_val=sl_val,
+                    sl_mode=sl_mode,
+                    offset_val=offset_val
+                )
+
+                res_sl = execute_single_order(SESSION["client"], {
+                    "exchange_segment": data.get("exchange_segment", "nse_fo"),
+                    "trading_symbol": data.get("trading_symbol"),
+                    "transaction_type": sl_tx_type,
+                    "product": data.get("product", "MIS"),
+                    "order_type": "SL",
+                    "price": str(sl_limit_price),
+                    "trigger_price": str(sl_trigger_price),
+                    "quantity": str(data.get("quantity", "1")),
+                    "tag": f"sl_{entry_oid or 'manual'}"
+                })
+                res["sl_order"] = res_sl
+
         return jsonify(res)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -2177,26 +2334,12 @@ def get_strategy_tracker_contracts(strat):
 
         if entry_price and entry_price > 0 and has_entered:
             # Stop Loss Calculation
-            sl_pct = None
-            if isinstance(leg_sl_obj, dict) and leg_sl_obj.get("enabled"):
-                try:
-                    sl_pct = float(leg_sl_obj.get("val", 0))
-                except Exception:
-                    pass
-            else:
-                sl_text = str(strat.get("sl") or "").strip()
-                if sl_text and sl_text.upper() not in ["NONE", "DISABLED", "OFF", "0", "0 PTS", "0.0", "0%", "0.0 PTS"]:
-                    num_match = re.search(r'(\d+(?:\.\d+)?)', sl_text)
-                    if num_match:
-                        sl_pct = float(num_match.group(1))
-
-            if sl_pct is not None and sl_pct > 0:
-                if default_tx == "S":
-                    sl_price = round(entry_price * (1.0 + (sl_pct / 100.0)), 2)
-                else:
-                    sl_price = round(entry_price * (1.0 - (sl_pct / 100.0)), 2)
+            is_sl_enabled, sl_val, sl_mode = extract_sl_config(strat, leg_sl_obj if isinstance(leg_sl_obj, dict) else {"sl": leg_sl_obj})
+            if is_sl_enabled:
+                _, sl_price, _ = calculate_sl_prices(entry_price, default_tx, sl_val, sl_mode, offset_val=0.0)
                 stoploss_str = f"₹{sl_price:.2f}"
             else:
+                sl_price = None
                 stoploss_str = "-"
 
             # Target Profit Calculation
@@ -2226,7 +2369,12 @@ def get_strategy_tracker_contracts(strat):
             total_strat_pnl += leg_pnl
 
             # Status Evaluation
-            if has_exited:
+            saved_status = exec_info.get("status", "EXECUTED") if exec_info else "EXECUTED"
+            if saved_status in ["SL_HIT", "STOPLOSS HIT"]:
+                status_str = "STOPLOSS HIT"
+                if exec_info:
+                    exec_info["status"] = "STOPLOSS HIT"
+            elif has_exited:
                 status_str = "EXITED"
                 if exec_info:
                     exec_info["status"] = "EXITED"
