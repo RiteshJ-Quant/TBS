@@ -304,6 +304,70 @@ def calculate_sl_prices(entry_price: float, tx_type: str, sl_val: float, sl_mode
     return sl_tx_type, sl_trigger_price, sl_limit_price
 
 
+def get_actual_order_fill_price(client, order_id: str) -> float:
+    """
+    Queries Kotak Neo API trade_report or order_report to get the actual average execution fill price for an order_id.
+    Returns float fill price (> 0.0) if traded/filled, else 0.0.
+    """
+    if not client or not order_id or "CONFIRMED" in str(order_id):
+        return 0.0
+    try:
+        # Method 1: Trade Report
+        if hasattr(client, "trade_report"):
+            try:
+                tr_res = client.trade_report(order_id=str(order_id))
+                data_list = []
+                if isinstance(tr_res, dict):
+                    data_list = tr_res.get("data") or []
+                elif isinstance(tr_res, list):
+                    data_list = tr_res
+
+                if data_list and isinstance(data_list, list):
+                    total_qty = 0
+                    total_val = 0.0
+                    for item in data_list:
+                        if isinstance(item, dict):
+                            avg_p = float(item.get("avgPrc") or item.get("flPrc") or item.get("price") or item.get("avgExecPrice") or 0.0)
+                            f_qty = int(item.get("fldQty") or item.get("qty") or 0)
+                            if avg_p > 0 and f_qty > 0:
+                                total_qty += f_qty
+                                total_val += (avg_p * f_qty)
+                    if total_qty > 0:
+                        return round(total_val / total_qty, 2)
+                    elif data_list and isinstance(data_list[0], dict):
+                        first_p = float(data_list[0].get("avgPrc") or data_list[0].get("flPrc") or 0.0)
+                        if first_p > 0:
+                            return round(first_p, 2)
+            except Exception as tr_ex:
+                logging.debug(f"trade_report check error for order {order_id}: {tr_ex}")
+
+        # Method 2: Order Report Fallback
+        if hasattr(client, "order_report"):
+            try:
+                ord_res = client.order_report()
+                orders = []
+                if isinstance(ord_res, dict):
+                    orders = ord_res.get("data") or []
+                elif isinstance(ord_res, list):
+                    orders = ord_res
+
+                if isinstance(orders, list):
+                    for bo in orders:
+                        if isinstance(bo, dict):
+                            bo_id = str(bo.get("order_id") or bo.get("nOrderNo") or bo.get("nOrdNo") or "").strip()
+                            if bo_id == str(order_id):
+                                avg_p = float(bo.get("avgExecPrice") or bo.get("avgPrc") or bo.get("flPrc") or bo.get("price") or 0.0)
+                                if avg_p > 0:
+                                    return round(avg_p, 2)
+            except Exception as ord_ex:
+                logging.debug(f"order_report check error for order {order_id}: {ord_ex}")
+    except Exception as e:
+        logging.warning(f"⚠️ Could not fetch fill price for order {order_id}: {e}")
+
+    return 0.0
+
+
+
 def execute_single_order(client, payload: dict) -> dict:
     """Helper to place an order via Kotak Neo API client."""
     exchange_segment = str(payload.get("exchange_segment", "nse_cm")).strip().lower()
@@ -645,6 +709,15 @@ def background_strategy_scheduler():
                                     if is_entry_success:
                                         order_ids.append(f"LIMIT_ENTRY:{entry_oid or 'CONFIRMED'}")
                                         executed_contracts = strat.setdefault("executed_contracts", {})
+
+                                        # Try fetching actual fill price from broker trade report immediately
+                                        actual_fill = get_actual_order_fill_price(SESSION["client"], entry_oid) if entry_oid else 0.0
+                                        effective_entry_price = actual_fill if actual_fill > 0 else limit_entry_price
+
+                                        if actual_fill > 0:
+                                            logging.info(f"✅ [BROKER FILL SYNC] Realized fill price for {trd_sym} (Order ID: {entry_oid}) = ₹{actual_fill} (Limit: ₹{limit_entry_price})")
+                                            add_system_console_log(f"✅ Executed fill price for {trd_sym}: ₹{actual_fill} (Limit: ₹{limit_entry_price})", category="ORDER_EXECUTED")
+
                                         exec_info = {
                                             "leg_idx": idx,
                                             "strike": c.get("strike_num") or c.get("strike"),
@@ -652,7 +725,10 @@ def background_strategy_scheduler():
                                             "trading_symbol": trd_sym,
                                             "token": c.get("token"),
                                             "segment": segment,
-                                            "entry_price": limit_entry_price,
+                                            "entry_price": effective_entry_price,
+                                            "submitted_price": limit_entry_price,
+                                            "order_id": entry_oid,
+                                            "price_synced": (actual_fill > 0),
                                             "status": "EXECUTED",
                                             "entry_time": current_hhmm
                                         }
@@ -664,15 +740,16 @@ def background_strategy_scheduler():
 
                                     # Only submit matching SL Order if SL is enabled AND entry order was accepted by broker
                                     if is_sl_enabled and is_entry_success:
+                                        effective_entry = exec_info.get("entry_price") or limit_entry_price
                                         sl_tx_type, sl_trigger_price, sl_limit_price = calculate_sl_prices(
-                                            entry_price=limit_entry_price,
+                                            entry_price=effective_entry,
                                             tx_type=tx_type,
                                             sl_val=sl_val,
                                             sl_mode=sl_mode,
                                             offset_val=entry_offset
                                         )
 
-                                        logging.info(f"🛡️ [REAL SL ORDER SUBMISSION] Submitting matching SL Order for {trd_sym} {sl_tx_type} Qty={qty} | Entry=₹{limit_entry_price} -> Trigger=₹{sl_trigger_price} Limit=₹{sl_limit_price} (SL={sl_val} {sl_mode})")
+                                        logging.info(f"🛡️ [REAL SL ORDER SUBMISSION] Submitting matching SL Order for {trd_sym} {sl_tx_type} Qty={qty} | Entry=₹{effective_entry} -> Trigger=₹{sl_trigger_price} Limit=₹{sl_limit_price} (SL={sl_val} {sl_mode})")
                                         res_sl = execute_single_order(SESSION["client"], {
                                             "exchange_segment": segment,
                                             "trading_symbol": trd_sym,
@@ -1094,6 +1171,10 @@ def place_order():
             raw_tx = str(data.get("transaction_type", "B")).strip().upper()
             tx_type = "B" if raw_tx in ["BUY", "B"] else "S"
             entry_price = float(data.get("price") or 0.0)
+            actual_fill = get_actual_order_fill_price(SESSION["client"], entry_oid) if entry_oid else 0.0
+            if actual_fill > 0:
+                entry_price = actual_fill
+
             if entry_price <= 0 and data.get("ltp"):
                 entry_price = float(data.get("ltp"))
 
@@ -2341,6 +2422,16 @@ def get_strategy_tracker_contracts(strat):
         # Check / Initialize execution state
         if not exec_info:
             exec_info = executed_contracts.get(trd_sym)
+
+        # Dynamic sync of actual broker fill price from Kotak Neo
+        if exec_info and has_entered and SESSION.get("logged_in") and SESSION.get("client") and not exec_info.get("price_synced"):
+            entry_oid = exec_info.get("order_id")
+            if entry_oid:
+                actual_fill = get_actual_order_fill_price(SESSION["client"], entry_oid)
+                if actual_fill > 0:
+                    exec_info["entry_price"] = actual_fill
+                    exec_info["price_synced"] = True
+                    logging.info(f"🔄 [TRACKER FILL SYNC] Updated Leg {exec_info.get('trading_symbol')} entry price to actual fill ₹{actual_fill}")
 
         if not exec_info and has_entered:
             init_entry = ltp_val if ltp_val > 0 else (48.70 if opt_type == "PE" else 79.70)

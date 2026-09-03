@@ -2,5 +2,6 @@ Kotak-neo-api-v2/
 __pycache__/
 master_scrips/
 venv/
+logs/
 strategies.json
 settings.json
